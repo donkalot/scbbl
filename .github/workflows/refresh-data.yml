@@ -1,0 +1,69 @@
+name: Refresh data
+
+on:
+  schedule:
+    # Daily through the season (Cricsheet posts a match a day or two after it's played),
+    # weekly the rest of the year. 19:23 UTC is 06:23 AEDT, after the night's games.
+    - cron: '23 19 * 11,12,1,2 *'
+    - cron: '23 19 * 3-10 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download, rebuild, run guards
+        run: python -m pipeline.build
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "scbbl-bot"
+          git config user.email "scbbl-bot@users.noreply.github.com"
+          git add data/
+          # meta.json carries the build time, so it changes every run; only commit real data changes.
+          if git diff --cached --quiet -- . ':!data/meta.json'; then
+            echo "No data changes."
+          else
+            git commit -m "chore: data refresh"
+            git push
+          fi
+
+  # File an issue on failure so a red cron lands somewhere that gets read. One issue
+  # per outage: later failures comment on it rather than opening a new one.
+  notify:
+    needs: refresh
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          existing=$(gh issue list --repo "$REPO" --state open --label data-refresh-failure \
+            --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "Refresh failed again: $RUN_URL"
+          else
+            gh label create data-refresh-failure --repo "$REPO" \
+              --color B60205 --description "Scheduled data refresh is failing" 2>/dev/null || true
+            body=$(printf '%s\n\n%s\n\n%s\n' \
+              "The scheduled refresh failed, so the site's data is stale until this is fixed." \
+              "Run: $RUN_URL" \
+              "Guard failures print every problem before exiting. Look for GUARD lines in the log: a shrunken Cricsheet zip, a fixture that fails the 40-match/10-per-team check, or a curated name that no longer matches a squad.")
+            gh issue create --repo "$REPO" --label data-refresh-failure \
+              --title "Scheduled data refresh is failing" --body "$body"
+          fi

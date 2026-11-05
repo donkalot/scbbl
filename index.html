@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SC BBL Planner — Big Bash SuperCoach stats, doubles, byes and availability</title>
+<meta name="description" content="Plan your SuperCoach BBL|16 team: SC points history for every Big Bash player, double-game and bye planner, availability clashes, role changes and squads.">
+<meta name="theme-color" content="#14213d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root { --brand: #14213d; --accent: #fca311; --ink: #1a202c; --muted: #5a6474; --line: #e2e8f0; --bg: #f5f7fa; --good: #2f855a; --good-bg: #c6f6d5; --bad: #c53030; --bad-bg: #fed7d7; --warn-bg: #fefcbf; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); }
+  header { background: var(--brand); color: #fff; position: sticky; top: 0; z-index: 5; }
+  .bar { max-width: 1100px; margin: 0 auto; padding: 10px 16px 0; display: flex; align-items: baseline; gap: 12px; }
+  .bar h1 { font-size: 1.1rem; margin: 0; }
+  .bar h1 span { color: var(--accent); }
+  nav { max-width: 1100px; margin: 0 auto; padding: 0 8px; display: flex; gap: 2px; overflow-x: auto; }
+  nav a { color: #cbd5e0; text-decoration: none; padding: 10px 12px; border-bottom: 3px solid transparent; white-space: nowrap; }
+  nav a.on { color: #fff; border-bottom-color: var(--accent); }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h2 { font-size: 1.25rem; margin: 4px 0 12px; }
+  h3 { font-size: 1.02rem; margin: 22px 0 8px; }
+  a { color: #1f4e9c; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .banner { background: var(--warn-bg); border: 1px solid #ecc94b; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: .92rem; }
+  input[type=search], select { font: inherit; padding: 7px 9px; border: 1px solid #cbd5e0; border-radius: 7px; background: #fff; }
+  input[type=search] { flex: 1; min-width: 180px; }
+  button { font: inherit; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; background: #fff; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th { font-size: .82rem; color: var(--muted); font-weight: 600; background: #fafbfc; position: sticky; top: 0; }
+  th.l, td.l { text-align: left; }
+  tbody tr:hover { background: #f7fafc; }
+  table.pin tr > :first-child { position: sticky; left: 0; z-index: 1; background: #fff; }
+  table.pin thead tr > :first-child { background: #fafbfc; z-index: 2; }
+  td.name a { font-weight: 600; text-decoration: none; }
+  .team { display: inline-block; min-width: 38px; text-align: center; font-size: .75rem; font-weight: 700; padding: 1px 5px; border-radius: 5px; color: #fff; }
+  .t-HEA { background: #00a3ad; } .t-HUR { background: #5c2d91; } .t-REN { background: #d71920; } .t-SCO { background: #f47920; }
+  .t-SIX { background: #d9006c; } .t-STA { background: #00843d; } .t-STR { background: #0086c8; } .t-THU { background: #7ab800; color: #1a202c; }
+  .t-TBC { background: #a0aec0; }
+  .pill { font-size: .72rem; padding: 1px 7px; border-radius: 9px; background: var(--line); color: var(--muted); display: inline-block; }
+  .pill.ok { background: var(--good-bg); color: #22543d; }
+  .pill.no { background: var(--bad-bg); color: #742a2a; }
+  .pill.os { background: #e9d8fd; color: #44337a; }
+  .g0 { background: var(--bad-bg); color: #742a2a; font-weight: 700; }
+  .g2 { background: var(--good-bg); color: #22543d; font-weight: 700; }
+  .g3 { background: #68d391; color: #1c4532; font-weight: 700; }
+  .gx { background: var(--warn-bg); }
+  td.cell { text-align: center; }
+  .sq { width: 30px; padding: 2px 0; font-weight: 700; }
+  .sq.in { background: var(--accent); border-color: var(--accent); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .stat b { display: block; font-size: 1.25rem; }
+  .feed .item { display: flex; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .feed .item:last-child { border-bottom: 0; }
+  .feed .date { color: var(--muted); font-size: .85rem; min-width: 84px; }
+  .timeline { position: relative; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .tl-row { position: relative; height: 26px; margin: 4px 0; }
+  .tl-label { font-size: .85rem; margin-top: 8px; }
+  .tl-bar { position: absolute; top: 3px; height: 20px; border-radius: 5px; font-size: .72rem; color: #fff; padding: 2px 6px; overflow: hidden; white-space: nowrap; }
+  .k-test { background: #2b6cb0; } .k-league { background: #805ad5; } .k-injury { background: var(--bad); } .k-round { background: #edf2f7; color: var(--ink); border: 1px solid #cbd5e0; }
+  .tl-bar.unverified { opacity: .7; background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(255,255,255,.25) 6px 12px); }
+  footer { max-width: 1100px; margin: 24px auto; padding: 0 16px; color: var(--muted); font-size: .82rem; }
+  .hidden { display: none !important; }
+  svg.spark { vertical-align: middle; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar"><h1>SC <span>BBL</span> Planner</h1><span class="muted" id="built" style="color:#a0aec0"></span></div>
+  <nav id="tabs">
+    <a href="#/players" data-tab="players">Players</a>
+    <a href="#/planner" data-tab="planner">Planner</a>
+    <a href="#/availability" data-tab="availability">Availability</a>
+    <a href="#/roles" data-tab="roles">Roles</a>
+  </nav>
+</header>
+<main id="app" aria-live="polite"><p class="muted">Loading…</p></main>
+<footer>
+  Unofficial fan site, not affiliated with SuperCoach, News Corp or Cricket Australia. SC points are computed from public scorecards using the published scoring table, so official scores can differ.
+  Ball-by-ball history from <a href="https://cricsheet.org/">Cricsheet</a> (ODC-BY). Fixture and live scorecards from cricket.com.au. Squads from Wikipedia.
+</footer>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

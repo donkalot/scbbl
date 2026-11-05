@@ -1,0 +1,22 @@
+{
+  "source": "https://en.wikipedia.org/wiki/2026%E2%80%9327_Big_Bash_League_season",
+  "as_of": "2026-11-04",
+  "teams": {
+    "STR": ["Matt Short", "Alex Carey", "Mark Chapman", "Mackenzie Harvey", "Thomas Kelly", "Lloyd Pope", "Haris Rauf", "Jason Sangha", "Liam Scott", "Ben Stokes", "Tom Straker", "Henry Thornton", "Jerrssis Wadia"],
+    "HEA": ["Xavier Bartlett", "Max Bryant", "Tom Curran", "Lachlan Hearne", "Bevon Jacobs", "Spencer Johnson", "Usman Khawaja", "Matthew Kuhnemann", "Nathan McSweeney", "Michael Neser", "Jimmy Peirson", "Matt Renshaw", "Tim Robinson", "Callum Vidler", "Hugh Weibgen", "Jack Wildermuth"],
+    "HUR": ["Nathan Ellis", "Marcus Bean", "Iain Carlisle", "Nikhil Chaudhary", "Tim David", "Nick Hobson", "Shai Hope", "Rishad Hossain", "Ben McDermott", "Riley Meredith", "Mitchell Owen", "Will Prestwidge", "Billy Stanlake", "Tim Ward", "Jake Weatherald", "Beau Webster", "Adam Zampa"],
+    "REN": ["Will Sutherland", "Michael Archer", "Jonny Bairstow", "Jason Behrendorff", "Michael Bracewell", "Josh Brown", "Harry Dixon", "Brendan Doggett", "Sam Elliott", "Jake Fraser-McGurk", "Caleb Jewell", "Ben Manenti", "Oliver Peake", "Tom Rogers", "Mustafizur Rahman", "Callum Stow"],
+    "STA": ["Marcus Stoinis", "Finn Allen", "Austin Anlezark", "Hilton Cartwright", "Sam Harper", "Liam Hatcher", "Campbell Kellaway", "Glenn Maxwell", "Todd Murphy", "Craig Overton", "Jamie Overton", "Tom Rogers", "Peter Siddle", "Mitchell Swepson"],
+    "SCO": ["Ashton Turner", "Ashton Agar", "Mahli Beardman", "Cooper Connolly", "Brody Couch", "Zak Crawley", "Joel Curtis", "Aneurin Donald", "Aaron Hardie", "Calvin Harrison", "Will Malajczuk", "Mitchell Marsh", "Lance Morris", "Joel Paris", "Jhye Richardson"],
+    "SIX": ["Sean Abbott", "Jafer Chohan", "Joel Davies", "Oliver Davies", "Ben Dwarshuis", "Jack Edwards", "Chris Jordan", "Hayden Kerr", "Riley Kingsell", "Fergus O'Neill", "Josh Philippe", "Corey Rocchiccioli", "Jake Scott", "Tim Seifert", "Lachlan Shaw", "Jordan Silk", "Steve Smith"],
+    "THU": ["Cameron Bancroft", "Sam Billings", "Trent Boult", "Lockie Ferguson", "Matthew Gilkes", "Chris Green", "Ryan Hadley", "Sam Konstas", "Aidan O'Connor", "Nic Maddinson", "Will Salzmann", "Daniel Sams", "Tanveer Sangha", "David Warner"]
+  },
+  "captains": {"STR": "Matt Short", "HUR": "Nathan Ellis", "REN": "Will Sutherland", "STA": "Marcus Stoinis", "SCO": "Ashton Turner"},
+  "overseas": {
+    "Mark Chapman": "NZ", "Haris Rauf": "PAK", "Ben Stokes": "ENG", "Tom Curran": "ENG", "Bevon Jacobs": "NZ",
+    "Tim Robinson": "NZ", "Shai Hope": "WI", "Rishad Hossain": "BAN", "Jonny Bairstow": "ENG", "Michael Bracewell": "NZ",
+    "Mustafizur Rahman": "BAN", "Finn Allen": "NZ", "Craig Overton": "ENG", "Jamie Overton": "ENG", "Zak Crawley": "ENG",
+    "Aneurin Donald": "ENG", "Calvin Harrison": "ENG", "Jafer Chohan": "ENG", "Chris Jordan": "ENG", "Tim Seifert": "NZ",
+    "Sam Billings": "ENG", "Trent Boult": "NZ", "Lockie Ferguson": "NZ"
+  }
+}

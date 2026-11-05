@@ -1,8 +1,8 @@
 import json
 from datetime import datetime, timezone
 
-from . import cricsheet, fixture, guards, register
-from .common import DATA, write_json
+from . import cricsheet, fixture, guards, register, roles, squads
+from .common import CURATED, DATA, write_json
 from .scoring import sc_points
 
 SEASON_STATS = ('r', 'bf', 'f4', 's6', 'lb', 'rc', 'wk', 'dots', 'mdn', 'ct', 'st', 'ro')
@@ -56,10 +56,26 @@ def main():
     fx = fixture.build()
     guards.fail_if(fixture.check(fx), 'fixture')
 
+    sq, new_players = squads.build(players)
+    avail = json.loads((CURATED / 'availability.json').read_text(encoding='utf-8'))
+    notes = json.loads((CURATED / 'notes.json').read_text(encoding='utf-8'))
+    unknown = squads.link(avail['links'], sq) + squads.link(notes, sq)
+    guards.fail_if([f'curated entry names {u}, who is not in that squad' for u in unknown], 'curated')
+    team_of = {r['pid']: team for team, rs in sq['teams'].items() for r in rs}
+    for team, rs in sq['teams'].items():
+        for r in rs:
+            if r['pid'] in players:
+                players[r['pid']]['n'] = r['n']
+
     for season, ms in by_season.items():
         write_json(DATA / 'matches' / f'{season_file(season)}.json', [compact_match(m) for m in ms])
     write_json(DATA / 'players.json', players)
     write_json(DATA / 'fixture.json', fx)
+    write_json(DATA / 'squads.json', sq)
+    write_json(DATA / 'availability.json', avail)
+    write_json(DATA / 'notes.json', sorted(notes, key=lambda n: n['date'], reverse=True))
+    write_json(DATA / 'rounds.json', json.loads((CURATED / 'rounds.json').read_text()))
+    write_json(DATA / 'roles.json', roles.shifts(by_season, team_of, sq['as_of']))
     write_json(idmap_path, dict(sorted(idmap.items())))
     write_json(guards.BASELINE, guards.ratchet(by_season, players, baseline))
     write_json(DATA / 'meta.json', {
@@ -71,6 +87,7 @@ def main():
     })
     print(f'{len(players)} players, {sum(len(v) for v in by_season.values())} matches, '
           f'{len(fx)} fixtures, {len(idmap)} CA ids linked')
+    print(f'{len(new_players)} squad players with no BBL history: {", ".join(new_players)}')
 
 
 if __name__ == '__main__':

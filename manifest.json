@@ -1,0 +1,11 @@
+{
+  "name": "SC BBL Planner",
+  "short_name": "SC BBL",
+  "description": "SuperCoach BBL stats, doubles and byes, availability and role changes.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#14213d",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

@@ -1,0 +1,15 @@
+{
+  "events": [
+    {"id": "aus-nz-t1", "name": "Australia v New Zealand, 1st Test", "kind": "test", "start": "2026-12-09", "end": "2026-12-13", "verified": false},
+    {"id": "aus-nz-t2", "name": "Australia v New Zealand, 2nd Test", "kind": "test", "start": "2026-12-17", "end": "2026-12-21", "verified": false},
+    {"id": "aus-nz-t3", "name": "Australia v New Zealand, 3rd Test", "kind": "test", "start": "2026-12-26", "end": "2026-12-30", "verified": false},
+    {"id": "aus-nz-t4", "name": "Australia v New Zealand, 4th Test", "kind": "test", "start": "2027-01-04", "end": "2027-01-08", "verified": false},
+    {"id": "ind-aus-tests", "name": "Australia Test tour of India (start approx.)", "kind": "test", "start": "2027-01-21", "end": "2027-01-26", "verified": false},
+    {"id": "ilt20", "name": "ILT20 (UAE)", "kind": "league", "start": "2026-12-02", "end": "2026-12-20", "verified": false},
+    {"id": "sa20", "name": "SA20 (South Africa)", "kind": "league", "start": "2027-01-17", "end": "2027-01-26", "verified": false},
+    {"id": "behrendorff-shoulder", "name": "Shoulder injury, ruled out for the season", "kind": "injury", "start": "2026-12-12", "end": "2027-01-26", "verified": true, "source": "Wikipedia, 2026-11-04"}
+  ],
+  "links": [
+    {"team": "REN", "player": "Jason Behrendorff", "event": "behrendorff-shoulder"}
+  ]
+}
