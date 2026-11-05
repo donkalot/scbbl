@@ -8,7 +8,7 @@ This is an unofficial fan site, not affiliated with SuperCoach, News Corp or Cri
 
 ## What it does
 
-- **Players**: search every BBL|16 squad player, or everyone since 2011. Each player page has a season table, a per-match log, venue splits, last-5 form and a sparkline of SC points.
+- **Players**: search every BBL|16 squad player, or everyone since 2011, with SuperCoach price, position and ownership; filter by position, sort by price or ownership. Each player page has a season table, a per-match log, venue splits, last-5 form and a sparkline of SC points.
 - **Other competitions**: squad players' records in Tests, ODIs, T20Is, the Sheffield Shield, the One-Day Cup and the overseas T20 leagues. Each shows a last-12-months summary and the last 10 games anywhere. T20 leagues get an SC-equivalent average from the same scoring table, so newcomers can be compared with BBL regulars; the Players list can sort by it.
 - **Planner**: games per team per round, with doubles and byes highlighted. Click a round to see its matches and their rain risk. Within the 15-day forecast, a blue dot marks each team's and each squad player's games at Med or High rain risk, with a per-round count of your at-risk games; forecasts more than 7 days out are labelled early. Your squad is shown against the rounds, with captain options (projected average × available games). The squad is saved in localStorage only.
 - **Availability**: a timeline of Tests and clashing leagues against the rounds, plus the players linked to each event.
@@ -44,12 +44,25 @@ npx wrangler deploy
 | SC scoring table | SuperCoach BBL rules | `curated/scoring.json` |
 | Live scorecards | cricket.com.au `apiv2` `views/scorecard`, fetched by the browser | `logic.js` `caLines` |
 | Rain forecast, rain history | [Open-Meteo](https://open-meteo.com/) forecast (browser) and archive (CC BY 4.0) | `app.js`, `pipeline/climate.py` |
-| Rounds | Drafted Mon–Sun weeks until SuperCoach publishes its own | `curated/rounds.json` |
+| SC prices, positions, ownership, game rules | SuperCoach JSON saved by hand from a signed-in browser (its API blocks bots) | `curated/sc_raw/`, `pipeline/sc_import.py` |
+| Rounds | SuperCoach's `real_fixture` once every round is saved; until then, drafted Mon–Sun weeks | `curated/sc_raw/fixture-round*.json`, `curated/rounds.json` |
 | Clashes, injuries, news | Hand-curated | `curated/availability.json`, `curated/notes.json` |
 
-SC points are computed from the scorecards using `curated/scoring.json`, so official scores can differ. Shared run-outs in Cricsheet are split between the fielders. The live scorecard names one run-out fielder, who gets the full credit. `logic.js` ports the scoring code, and a node test checks that it matches the Python on every 2025-26 line and on a replayed cricket.com.au scorecard. The Hundred uses 5-ball sets, so it gets no SC-equivalent; one-day and first-class get traditional stats only.
+SC points are computed from the scorecards using `curated/scoring.json`. They're checked against SuperCoach's official BBL|15 league totals (`previous_total` in its player list): all 93 players' game counts agree, 76 totals are exact, and the rest are off by 199 points in 27,775. What's left is which fielder SuperCoach credits for a shared run-out, which follows no rule we can find, so Cricsheet's shared run-outs are split between the fielders. Byes and leg-byes are not dot balls. The live scorecard names one run-out fielder, who gets the full credit, and its dot count includes byes and leg-byes, so a bowler's live points can run a point or two high. `logic.js` ports the scoring code, and a node test checks that it matches the Python on every 2025-26 line and on a replayed cricket.com.au scorecard. The Hundred uses 5-ball sets, so it gets no SC-equivalent; one-day and first-class get traditional stats only.
 
 Cricsheet uses one person id across every competition, so squad players link without name matching. Newcomers with no BBL history are matched by name (exact, then initials) to the only namesake who has played in the last 3 years.
+
+## SuperCoach snapshot
+
+SuperCoach can't be fetched by a script, so each round, signed in at supercoach.com.au, open these and save each response into `curated/sc_raw/`:
+
+| URL (under `https://www.supercoach.com.au/2026/api/bbl/classic/v1/`) | Save as |
+| --- | --- |
+| `settings?min=false` | `settings.json` |
+| `players-cf?embed=notes,odds,player_stats,positions&round=N` | `players-roundN.json` |
+| `real_fixture?round=N` | `fixture-roundN.json` (or the whole fixture as `fixture.json`) |
+
+The build uses the newest players file. Every SC player must match a squad player by team and name; if SuperCoach spells a name differently, map it in `curated/sc_names.json` (`{"SC name": "squad name"}`). Once the saved fixture files cover all 44 matches, SuperCoach's rounds replace the draft ones. The Players page says which round the prices are for, and warns once that round is over.
 
 ## Refresh and guards
 
@@ -62,6 +75,7 @@ Cricsheet uses one person id across every competition, so squad players link wit
    - the player count hasn't dropped by more than 25%
    - the fixture has exactly 40 league games, 10 per team, inside the season window, with no team playing twice in a day
    - every curated name resolves to a squad player
+   - every SuperCoach player matches a squad player, and every saved SC fixture match lines up with a CA fixture, with no overlapping rounds
 3. Commits `data/` if anything changed. GitHub Pages redeploys automatically.
 
 If a scheduled run fails, a `data-refresh-failure` issue is opened, or commented on if one is already open. Fixture corrections go in `curated/fixture_overrides.json`, never into the generated files.

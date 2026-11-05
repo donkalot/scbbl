@@ -74,15 +74,27 @@
   function draftBanner() {
     return D.rounds.draft ? `<div class="banner"><b>Draft rounds.</b> ${esc(D.rounds.note)}</div>` : '';
   }
+  const sc = pid => (D.sc && D.sc.players[pid]) || null;
+  const price = v => `$${(v / 1000).toFixed(1)}k`;
+  function scNote() {
+    if (!D.sc) return '<p class="muted">No SuperCoach prices yet.</p>';
+    const r = D.rounds.rounds.find(x => x.round === D.sc.round);
+    const text = `SuperCoach prices and ownership for round ${D.sc.round}, saved ${when(D.sc.updated)}.`;
+    // SC reprices after every round, so a snapshot is only stale once its round has been played.
+    return r && L.localDate(new Date().toISOString()) > r.end
+      ? `<div class="banner"><b>Old prices.</b> ${esc(text)} Round ${D.sc.round} has finished, so prices have moved since.</div>`
+      : `<p class="muted">${esc(text)}</p>`;
+  }
 
   // ---------- players ----------
   function viewPlayers(params) {
-    const st = { q: params.get('q') || '', team: params.get('team') || '', scope: params.get('scope') || 'squad', sort: params.get('sort') || 'proj' };
+    const st = { q: params.get('q') || '', team: params.get('team') || '', pos: params.get('pos') || '', scope: params.get('scope') || 'squad', sort: params.get('sort') || 'proj' };
     $app.innerHTML = `
       <h2>Players</h2>
       <div class="row card">
         <input type="search" id="q" placeholder="Search players" value="${esc(st.q)}" aria-label="Search players">
         <select id="team" aria-label="Team"><option value="">All teams</option>${L.TEAMS.map(t => `<option${t === st.team ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        ${D.sc ? `<select id="pos" aria-label="SuperCoach position"><option value="">All positions</option>${['WKP', 'BAT', 'BWL'].map(x => `<option${x === st.pos ? ' selected' : ''}>${x}</option>`).join('')}</select>` : ''}
         <select id="scope" aria-label="Which players">
           <option value="squad"${st.scope === 'squad' ? ' selected' : ''}>BBL|16 squads</option>
           <option value="mine"${st.scope === 'mine' ? ' selected' : ''}>My squad</option>
@@ -90,6 +102,7 @@
         </select>
       </div>
       <p class="muted">Proj = average SC points over the last two seasons (career if fewer than 3 games). T20 elsewhere = SC points per game in T20Is and franchise T20 leagues over the last 12 months, scored with the same table (games in brackets; under 5 games sorts last). Squads as of ${esc(D.squads.as_of)}.</p>
+      ${scNote()}
       <div class="scroll"><table id="ptable"></table></div>`;
     const latest = seasons[seasons.length - 1];
     const ids = new Set(Object.keys(squadOf));
@@ -98,7 +111,7 @@
       const p = D.players[pid];
       const a = p && p.s[latest];
       const lastSeason = p ? Object.keys(p.s).sort().pop() : null;
-      return { pid, n: name(pid), sq: squadOf[pid], last: a ? L.seasonLine(a) : null, a, proj: proj(pid),
+      return { pid, n: name(pid), sq: squadOf[pid], sc: sc(pid), last: a ? L.seasonLine(a) : null, a, proj: proj(pid),
                lastTeam: lastSeason && p.s[lastSeason].t, lastSeason };
     });
     // Fewer than 5 games is too small a sample to rank with everyone else.
@@ -107,6 +120,8 @@
       proj: (a, b) => (b.proj ?? -1) - (a.proj ?? -1),
       else: (a, b) => elseRank(b) - elseRank(a),
       name: (a, b) => a.n.localeCompare(b.n),
+      price: (a, b) => ((b.sc && b.sc.price) || 0) - ((a.sc && a.sc.price) || 0),
+      own: (a, b) => ((b.sc && b.sc.own) || 0) - ((a.sc && a.sc.own) || 0),
       runs: (a, b) => ((b.a && b.a.r) || 0) - ((a.a && a.a.r) || 0),
       wk: (a, b) => ((b.a && b.a.wk) || 0) - ((a.a && a.a.wk) || 0),
     };
@@ -117,16 +132,19 @@
       let list = rows.filter(r =>
         (st.scope === 'all' || (st.scope === 'mine' ? mine.has(r.pid) : r.sq)) &&
         (!st.team || (r.sq ? r.sq.team : r.lastTeam) === st.team) &&
+        (!st.pos || (r.sc && r.sc.pos.includes(st.pos))) &&
         (!q || r.n.toLowerCase().includes(q)));
       list.sort(sorters[st.sort] || sorters.proj);
       const shown = list.slice(0, 200);
       const th = (key, label) => `<th${key === 'name' ? ' class="l"' : ''}><a href="#" data-sort="${key}">${label}${st.sort === key ? ' ▾' : ''}</a></th>`;
       document.getElementById('ptable').innerHTML = `
-        <thead><tr><th></th>${th('name', 'Player')}<th class="l">Team</th>${th('proj', 'Proj')}${th('else', 'T20 elsewhere')}<th>M ${esc(latest)}</th><th>SC avg</th>${th('runs', 'Runs')}<th>SR</th>${th('wk', 'Wkts')}<th>Econ</th></tr></thead>
+        <thead><tr><th></th>${th('name', 'Player')}<th class="l">Team</th>${D.sc ? `<th class="l">Pos</th>${th('price', 'Price')}${th('own', 'Own %')}` : ''}${th('proj', 'Proj')}${th('else', 'T20 elsewhere')}<th>M ${esc(latest)}</th><th>SC avg</th>${th('runs', 'Runs')}<th>SR</th>${th('wk', 'Wkts')}<th>Econ</th></tr></thead>
         <tbody>${shown.map(r => `<tr>
           <td>${squadButton(r.pid)}</td>
           <td class="l name">${link(r.pid)} ${r.sq && r.sq.os ? `<span class="pill os">${esc(r.sq.os)}</span>` : ''}${r.sq && r.sq.new ? ' <span class="pill">new</span>' : ''}</td>
           <td class="l">${r.sq ? team(r.sq.team) : `<span class="muted">${esc(r.lastTeam || '')} ${esc(r.lastSeason || '')}</span>`}</td>
+          ${D.sc ? `<td class="l">${r.sc ? esc(r.sc.pos.join('/')) : ''}${r.sc && r.sc.inj ? ` <span class="pill no">${esc(r.sc.inj)}</span>` : ''}</td>
+          <td>${r.sc ? price(r.sc.price) : ''}</td><td>${r.sc && r.sc.own != null ? fix(r.sc.own) : ''}</td>` : ''}
           <td><b>${fix(r.proj)}</b></td>
           <td>${r.ew ? `${fix(r.ew.avg)} <span class="muted">(${r.ew.m})</span>` : ''}</td>
           <td>${r.a ? r.a.m : ''}</td><td>${r.last ? fix(r.last.avg) : ''}</td>
@@ -140,6 +158,7 @@
     document.getElementById('q').addEventListener('input', e => { st.q = e.target.value; render(); });
     document.getElementById('team').addEventListener('change', e => { st.team = e.target.value; render(); });
     document.getElementById('scope').addEventListener('change', e => { st.scope = e.target.value; render(); });
+    if (D.sc) document.getElementById('pos').addEventListener('change', e => { st.pos = e.target.value; render(); });
     document.getElementById('ptable').addEventListener('click', e => {
       const a = e.target.closest('[data-sort]');
       if (!a) return;
@@ -172,6 +191,7 @@
     const career = p ? Object.values(p.s).reduce((t, a) => ({ sc: t.sc + a.sc, m: t.m + a.m }), { sc: 0, m: 0 }) : { sc: 0, m: 0 };
     const playerSeasons = p ? Object.keys(p.s).sort() : [];
     const latestPlayed = playerSeasons[playerSeasons.length - 1];
+    const s = sc(pid);
 
     $app.innerHTML = `
       <p><a href="#/players">← Players</a></p>
@@ -186,7 +206,12 @@
         <div class="stat"><span class="muted">Career avg</span><b>${career.m ? fix(career.sc / career.m) : '–'}</b></div>
         <div class="stat"><span class="muted">Last 5 avg</span><b id="last5">–</b></div>
         <div class="stat"><span class="muted">BBL matches</span><b>${career.m}</b></div>
+        ${s ? `<div class="stat"><span class="muted">SC price</span><b>${price(s.price)}</b></div>
+        <div class="stat"><span class="muted">SC position</span><b>${esc(s.pos.join(' / '))}</b></div>
+        <div class="stat"><span class="muted">Owned</span><b>${s.own != null ? fix(s.own) + '%' : '–'}</b></div>
+        ${s.prev ? `<div class="stat"><span class="muted">Official SC 2025-26</span><b>${fix(s.prev[1] / s.prev[0])}</b><span class="muted">${s.prev[1]} pts in ${s.prev[0]}</span></div>` : ''}` : ''}
       </div>
+      ${s && s.inj ? `<div class="banner"><b>SuperCoach status:</b> ${esc(s.inj)}</div>` : ''}
       <div id="spark" class="card hidden"></div>
       ${events.length || shifts.length || notes.length ? `<h3>News and availability</h3><div class="card feed">
         ${events.map(e => `<div class="item"><span class="date">${shortDay(e.start)}–${shortDay(e.end)}</span><span><span class="pill no">Unavailable</span> ${esc(e.name)} ${e.verified ? '' : '<span class="pill">dates unverified</span>'}</span></div>`).join('')}
@@ -713,8 +738,9 @@
 
   async function init() {
     const files = ['players', 'fixture', 'squads', 'rounds', 'availability', 'roles', 'notes', 'meta'];
-    const loaded = await Promise.all(files.map(f => json(`data/${f}.json`)));
+    const loaded = await Promise.all([...files.map(f => json(`data/${f}.json`)), json('data/sc.json').catch(() => null)]);
     files.forEach((f, i) => { D[f] = loaded[i]; });
+    D.sc = loaded[files.length];
     seasons = D.meta.seasons.slice().sort();
     leagueRounds = D.rounds.rounds.filter(r => !r.finals);
     grid = L.teamRounds(D.fixture, leagueRounds);

@@ -107,8 +107,24 @@ def test_newcomer_page_shows_other_competitions(server, page):
 def test_players_list_shows_t20_elsewhere(server, page):
     page.goto(server + '#/players')
     page.fill('#q', 'bairstow')
-    cell = page.locator('#ptable tbody tr', has_text='Jonny Bairstow').locator('td').nth(4)
+    cell = page.locator('#ptable tbody tr', has_text='Jonny Bairstow').locator('td').nth(7)
     expect(cell).to_contain_text('(')
+
+
+def test_players_show_supercoach_price_position_and_ownership(server, page):
+    pid = _squad_pid('SCO', 'Mitchell Marsh')
+    sc = json.loads((ROOT / 'data' / 'sc.json').read_text(encoding='utf-8'))['players'][pid]
+    page.goto(server + '#/players?q=marsh')
+    expect(page.locator('#app')).to_contain_text('SuperCoach prices and ownership for round')
+    cells = page.locator('#ptable tbody tr', has_text='Mitchell Marsh').locator('td')
+    expect(cells.nth(3)).to_have_text('/'.join(sc['pos']))
+    expect(cells.nth(4)).to_have_text(f"${sc['price'] / 1000:.1f}k")
+    expect(cells.nth(5)).to_have_text(f"{sc['own']:.1f}")
+    page.select_option('#pos', 'WKP')
+    expect(page.locator('#ptable tbody tr', has_text='Mitchell Marsh')).to_have_count(0)
+    page.goto(server + '#/player/' + pid)
+    expect(page.locator('.stats')).to_contain_text("SC price")
+    expect(page.locator('.stats')).to_contain_text(f"{sc['prev'][1]} pts in {sc['prev'][0]}")
 
 
 def test_squad_add_shows_in_planner(server, page):

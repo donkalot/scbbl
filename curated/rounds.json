@@ -1,6 +1,6 @@
 {
   "draft": true,
-  "note": "Mon-Sun weeks drafted from the CA fixture. Replace with SuperCoach's real_fixture rounds once the game opens.",
+  "note": "Mon-Sun weeks drafted from the CA fixture. SuperCoach's own rounds replace these once its fixture is saved for every round.",
   "rounds": [
     {"round": 1, "start": "2026-12-12", "end": "2026-12-20"},
     {"round": 2, "start": "2026-12-21", "end": "2026-12-27"},

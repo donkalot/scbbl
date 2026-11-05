@@ -102,7 +102,7 @@ test('scPoints matches the Python sc_points on every BBL|15 line', () => {
   for (const l of lines) assert.equal(L.scPoints(l, scoring), l.sc, JSON.stringify(l));
 });
 
-test('a CA scorecard gives the Cricsheet points, apart from how shared run-outs are credited', () => {
+test('a CA scorecard gives the Cricsheet points, apart from shared run-outs and bye dots', () => {
   const card = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'ca_scorecard_23768.json'), 'utf8'));
   const idmap = data('idmap.json');
   const cs = data('matches/2025-26.json').find(m => m.id === '1493243').lines;
@@ -113,7 +113,9 @@ test('a CA scorecard gives the Cricsheet points, apart from how shared run-outs 
     const c = cs.find(x => x.pid === idmap[l.ca] && !x.sub);
     if (!c) continue;
     checked++;
-    assert.equal(L.scPoints({ ...l, ro: c.ro, ro_solo: c.ro_solo }, scoring), c.sc, l.name);
+    // CA counts byes and leg-byes as dot balls; SuperCoach doesn't.
+    assert.ok(l.dots >= c.dots, l.name);
+    assert.equal(L.scPoints({ ...l, ro: c.ro, ro_solo: c.ro_solo, dots: c.dots }, scoring), c.sc, l.name);
   }
   assert.equal(checked, 22);
 });

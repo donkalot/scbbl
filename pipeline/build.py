@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from . import climate, cricsheet, elsewhere, fixture, guards, register, roles, squads
+from . import climate, cricsheet, elsewhere, fixture, guards, register, roles, sc_import, squads
 from .common import CURATED, DATA, write_json
 from .scoring import sc_points
 
@@ -65,6 +65,8 @@ def main():
     notes = json.loads((CURATED / 'notes.json').read_text(encoding='utf-8'))
     unknown = squads.link(avail['links'], sq) + squads.link(notes, sq)
     guards.fail_if([f'curated entry names {u}, who is not in that squad' for u in unknown], 'curated')
+    sc, official_rounds, problems, sc_notes = sc_import.build(sq, fx)
+    guards.fail_if(problems, 'supercoach')
     team_of = {r['pid']: team for team, rs in sq['teams'].items() for r in rs}
     for team, rs in sq['teams'].items():
         for r in rs:
@@ -81,7 +83,9 @@ def main():
     write_json(DATA / 'elsewhere.json', ew)
     write_json(DATA / 'availability.json', avail)
     write_json(DATA / 'notes.json', sorted(notes, key=lambda n: n['date'], reverse=True))
-    write_json(DATA / 'rounds.json', json.loads((CURATED / 'rounds.json').read_text()))
+    write_json(DATA / 'rounds.json', official_rounds or json.loads((CURATED / 'rounds.json').read_text()))
+    if sc:
+        write_json(DATA / 'sc.json', sc)
     write_json(DATA / 'roles.json', roles.shifts(by_season, team_of, sq['as_of']))
     write_json(idmap_path, dict(sorted(idmap.items())))
     write_json(guards.BASELINE, guards.ratchet(by_season, players, baseline, comp_matches))
@@ -96,6 +100,8 @@ def main():
           f'{len(fx)} fixtures, {len(idmap)} CA ids linked')
     print(f'{sum(comp_matches.values())} matches in other competitions; '
           f'{len(ew["players"])} squad players have a record there')
+    for n in sc_notes:
+        print(f'SuperCoach: {n}')
     print(f'{len(new_players)} newcomers not matched to any Cricsheet player: {", ".join(new_players)}')
 
 

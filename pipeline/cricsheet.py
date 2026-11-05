@@ -90,7 +90,8 @@ def parse_match(mid, d, code=team_code):
                 if legal:
                     bwl['lb'] += 1
                     iw[dl['bowler']][0] += 1
-                    if conceded == 0:
+                    # SuperCoach's 2025-26 totals only reconcile if byes and leg-byes aren't dots.
+                    if dl['runs']['total'] == 0:
                         bwl['dots'] += 1
                 pb = per_bowler[dl['bowler']]
                 pb[0] += 1 if legal else 0

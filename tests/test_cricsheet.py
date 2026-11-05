@@ -29,10 +29,22 @@ def test_batting_matches_official_scorecard():
 
 def test_bowling_matches_official_scorecard():
     _, cs, ca, pname = _cs_vs_ca()
+    d = json.loads((FX / 'cricsheet_1493243.json').read_text())
+    bye_balls = {}
+    for inn in d['innings']:
+        for over in inn['overs']:
+            for dl in over['deliveries']:
+                ex = dl.get('extras', {})
+                if (ex.get('byes') or ex.get('legbyes')) and not (dl['runs']['batter'] or ex.get('wides') or ex.get('noballs')):
+                    key = dl['bowler'].split()[-1].lower()
+                    bye_balls[key] = bye_balls.get(key, 0) + 1
+    assert sum(bye_balls.values()) > 0
     for inn in ca['fixture']['innings']:
         for w in inn['bowlers']:
-            l = cs[pname[w['playerId']]]
-            assert (l['lb'], l['rc'], l['wk'], l['dots'], l['mdn'], l['wd'], l['nb']) == (
+            key = pname[w['playerId']]
+            l = cs[key]
+            # cricket.com.au counts byes and leg-byes as dots; SuperCoach (and our lines) don't.
+            assert (l['lb'], l['rc'], l['wk'], l['dots'] + bye_balls.get(key, 0), l['mdn'], l['wd'], l['nb']) == (
                 w['totalBallsBowled'], w['runsConceded'], w['wicketsTaken'], w['dotBalls'],
                 w['maidensBowled'], w['wideBalls'], w['noBalls'])
 
@@ -60,7 +72,7 @@ def _match(deliveries, super_over=None):
 
 def _dl(runs=0, extras=None, batter='A', wickets=None, non_boundary=False):
     d = {'batter': batter, 'bowler': 'X', 'non_striker': 'B' if batter == 'A' else 'A',
-         'runs': {'batter': runs, 'extras': sum((extras or {}).values()), 'total': runs}}
+         'runs': {'batter': runs, 'extras': sum((extras or {}).values()), 'total': runs + sum((extras or {}).values())}}
     if extras:
         d['extras'] = extras
     if wickets:
@@ -72,7 +84,8 @@ def _dl(runs=0, extras=None, batter='A', wickets=None, non_boundary=False):
 
 def test_maiden_needs_six_legal_scoreless_balls():
     assert _match([_dl() for _ in range(6)])['X']['mdn'] == 1
-    assert _match([_dl() for _ in range(5)] + [_dl(extras={'legbyes': 1})])['X']['mdn'] == 1
+    lb = _match([_dl() for _ in range(5)] + [_dl(extras={'legbyes': 1})])['X']
+    assert lb['mdn'] == 1 and lb['dots'] == 5
     assert _match([_dl() for _ in range(6)] + [_dl(extras={'wides': 1})])['X']['mdn'] == 0
 
 
