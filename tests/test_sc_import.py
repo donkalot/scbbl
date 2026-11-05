@@ -44,15 +44,34 @@ def _m(round_, kickoff, t1=None, t2=None):
     return {'round': round_, 'kickoff': kickoff, 'team1': t1 and {'abbrev': t1}, 'team2': t2 and {'abbrev': t2}}
 
 
-def test_rounds_from_sc_fixture():
-    sc = [_m(1, '2026-12-12T20:10:00+11:00', 'MLR', 'PER'), _m(1, '2026-12-15T19:15:00+11:00', 'BNE', 'SY6'),
-          _m(9, '2027-01-26T19:15:00+11:00')]
+def test_rounds_from_sc_fixture_add_the_unscored_finals():
+    sc = [_m(1, '2026-12-12T20:10:00+11:00', 'MLR', 'PER'), _m(1, '2026-12-15T19:15:00+11:00', 'BNE', 'SY6')]
     rounds, complete, problems = sc_import.rounds_from(sc, FIXTURE)
     assert problems == [] and complete
     assert rounds == [{'round': 1, 'start': '2026-12-12', 'end': '2026-12-15'},
-                      {'round': 9, 'start': '2027-01-26', 'end': '2027-01-26', 'finals': True}]
-    rounds, complete, _ = sc_import.rounds_from(sc[:2], FIXTURE)
+                      {'round': 2, 'start': '2027-01-26', 'end': '2027-01-26', 'finals': True}]
+    rounds, complete, _ = sc_import.rounds_from(sc[:1], FIXTURE)
     assert not complete and len(rounds) == 1
+
+
+def test_a_saved_sc_round_must_agree_with_the_draft(tmp_path, monkeypatch):
+    monkeypatch.setattr(sc_import, 'RAW', tmp_path)
+    (tmp_path / 'settings.json').write_text(json.dumps(json.loads((sc_import.CURATED / 'sc_raw' / 'settings.json').read_text(encoding='utf-8'))))
+    (tmp_path / 'players-round1.json').write_text(json.dumps([_sc('Alex', 'Carey', 'ADL')]))
+    (tmp_path / 'fixture-round1.json').write_text(json.dumps([_m(1, '2026-12-12T20:10:00+11:00', 'MLR', 'PER') | {'id': 7}]))
+    draft = {'rounds': [{'round': 1, 'start': '2026-12-12', 'end': '2026-12-12'}]}
+    _, official, problems, _ = sc_import.build(SQUADS, FIXTURE, draft)
+    assert official is None and problems == []
+    draft['rounds'][0]['end'] = '2026-12-13'
+    _, _, problems, _ = sc_import.build(SQUADS, FIXTURE, draft)
+    assert problems == ['SC round 1 is 2026-12-12 to 2026-12-12, but curated/rounds.json has 2026-12-12 to 2026-12-13']
+
+
+def test_the_saved_sc_fixture_agrees_with_the_draft_rounds():
+    fixture = json.loads((DATA / 'fixture.json').read_text(encoding='utf-8'))
+    draft = json.loads((CURATED / 'rounds.json').read_text(encoding='utf-8'))
+    _, _, problems, _ = sc_import.build(json.loads((DATA / 'squads.json').read_text(encoding='utf-8')), fixture, draft)
+    assert problems == []
 
 
 def test_rounds_reject_unmatched_and_overlapping():

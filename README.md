@@ -45,7 +45,7 @@ npx wrangler deploy
 | Live scorecards | cricket.com.au `apiv2` `views/scorecard`, fetched by the browser | `logic.js` `caLines` |
 | Rain forecast, rain history | [Open-Meteo](https://open-meteo.com/) forecast (browser) and archive (CC BY 4.0) | `app.js`, `pipeline/climate.py` |
 | SC prices, positions, ownership, game rules | SuperCoach JSON saved by hand from a signed-in browser (its API blocks bots) | `curated/sc_raw/`, `pipeline/sc_import.py` |
-| Rounds | SuperCoach's `real_fixture` once every round is saved; until then, drafted Mon–Sun weeks | `curated/sc_raw/fixture-round*.json`, `curated/rounds.json` |
+| Rounds | SuperCoach's `real_fixture` once every league match is covered; until then, the only split that fits SC's saved round 1 and Honeyball's published doubles and byes | `curated/sc_raw/fixture-round*.json`, `curated/rounds.json` |
 | Clashes, injuries, news | Hand-curated | `curated/availability.json`, `curated/notes.json` |
 
 SC points are computed from the scorecards using `curated/scoring.json`. They're checked against SuperCoach's official BBL|15 league totals (`previous_total` in its player list): all 93 players' game counts agree, 76 totals are exact, and the rest are off by 199 points in 27,775. What's left is which fielder SuperCoach credits for a shared run-out, which follows no rule we can find, so Cricsheet's shared run-outs are split between the fielders. Byes and leg-byes are not dot balls. The live scorecard names one run-out fielder, who gets the full credit, and its dot count includes byes and leg-byes, so a bowler's live points can run a point or two high. `logic.js` ports the scoring code, and a node test checks that it matches the Python on every 2025-26 line and on a replayed cricket.com.au scorecard. The Hundred uses 5-ball sets, so it gets no SC-equivalent; one-day and first-class get traditional stats only.
@@ -62,7 +62,7 @@ SuperCoach can't be fetched by a script, so each round, signed in at supercoach.
 | `players-cf?embed=notes,odds,player_stats,positions&round=N` | `players-roundN.json` |
 | `real_fixture?round=N` | `fixture-roundN.json` (or the whole fixture as `fixture.json`) |
 
-The build uses the newest players file. Every SC player must match a squad player by team and name; if SuperCoach spells a name differently, map it in `curated/sc_names.json` (`{"SC name": "squad name"}`). Once the saved fixture files cover all 44 matches, SuperCoach's rounds replace the draft ones. The Players page says which round the prices are for, and warns once that round is over.
+The build uses the newest players file. Every SC player must match a squad player by team and name; if SuperCoach spells a name differently, map it in `curated/sc_names.json` (`{"SC name": "squad name"}`). SuperCoach doesn't score the finals. Once the saved fixture files cover all 40 league matches, SuperCoach's rounds replace the draft ones, with the finals added as one unscored round. Until then, any saved SC round that disagrees with `curated/rounds.json` fails the build. The Players page says which round the prices are for, and warns once that round is over.
 
 ## Refresh and guards
 

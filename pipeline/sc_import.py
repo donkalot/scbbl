@@ -79,7 +79,8 @@ def player_row(p):
 
 
 def rounds_from(sc_matches, fixture):
-    """SC fixture -> round date ranges. Every SC match must line up with a CA fixture by kickoff and teams."""
+    """SC fixture -> round date ranges. Every SC match must line up with a CA fixture by kickoff and teams.
+    SuperCoach doesn't score the finals, so they're added as one finals round after its last."""
     by_start = {}
     for m in fixture:
         by_start.setdefault(m['start'], []).append(m)
@@ -107,11 +108,15 @@ def rounds_from(sc_matches, fixture):
     for a, b in zip(out, out[1:]):
         if b['start'] <= a['end']:
             problems.append(f"SC rounds {a['round']} and {b['round']} overlap ({a['end']} / {b['start']})")
-    complete = not problems and seen == {m['id'] for m in fixture}
+    complete = not problems and seen >= {m['id'] for m in fixture if m['stage'] == 'league'}
+    finals = sorted(datetime.fromisoformat(m['start']).astimezone(AEDT).date().isoformat()
+                    for m in fixture if m['id'] not in seen)
+    if complete and finals:
+        out.append({'round': out[-1]['round'] + 1, 'start': finals[0], 'end': finals[-1], 'finals': True})
     return out, complete, problems
 
 
-def build(squads, fixture):
+def build(squads, fixture, draft):
     """Returns (sc.json payload or None, official rounds or None, problems, notes for the build log)."""
     players_files = _round_files('players')
     if not (RAW / 'settings.json').exists() or not players_files:
@@ -130,7 +135,13 @@ def build(squads, fixture):
     rounds, complete, round_problems = rounds_from(list(by_id.values()), fixture)
     problems += round_problems
     if not complete:
-        notes.append(f'SuperCoach fixture covers {len(by_id)} of {len(fixture)} matches, so the draft rounds stay')
+        drafted = {r['round']: r for r in draft['rounds']}
+        for r in rounds:
+            d = drafted.get(r['round'], {})
+            if (d.get('start'), d.get('end')) != (r['start'], r['end']):
+                problems.append(f"SC round {r['round']} is {r['start']} to {r['end']}, but curated/rounds.json "
+                                f"has {d.get('start')} to {d.get('end')}")
+        notes.append(f'SuperCoach fixture covers {len(by_id)} of {sum(m["stage"] == "league" for m in fixture)} league matches, so the draft rounds stay')
 
     stats = [s for p in sc_players for s in p['player_stats']]
     updated = max(s['updated_at'] for s in stats)

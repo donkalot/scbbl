@@ -65,7 +65,8 @@ def main():
     notes = json.loads((CURATED / 'notes.json').read_text(encoding='utf-8'))
     unknown = squads.link(avail['links'], sq) + squads.link(notes, sq)
     guards.fail_if([f'curated entry names {u}, who is not in that squad' for u in unknown], 'curated')
-    sc, official_rounds, problems, sc_notes = sc_import.build(sq, fx)
+    draft_rounds = json.loads((CURATED / 'rounds.json').read_text(encoding='utf-8'))
+    sc, official_rounds, problems, sc_notes = sc_import.build(sq, fx, draft_rounds)
     guards.fail_if(problems, 'supercoach')
     team_of = {r['pid']: team for team, rs in sq['teams'].items() for r in rs}
     for team, rs in sq['teams'].items():
@@ -83,7 +84,7 @@ def main():
     write_json(DATA / 'elsewhere.json', ew)
     write_json(DATA / 'availability.json', avail)
     write_json(DATA / 'notes.json', sorted(notes, key=lambda n: n['date'], reverse=True))
-    write_json(DATA / 'rounds.json', official_rounds or json.loads((CURATED / 'rounds.json').read_text()))
+    write_json(DATA / 'rounds.json', official_rounds or draft_rounds)
     if sc:
         write_json(DATA / 'sc.json', sc)
     write_json(DATA / 'roles.json', roles.shifts(by_season, team_of, sq['as_of']))
