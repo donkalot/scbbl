@@ -49,8 +49,8 @@ python -m pipeline.build
 ## Tests
 
 ```
-python -m pytest -q          # pipeline units + Playwright smoke test
-node --test tests/           # logic.js
+python -m pytest -q               # pipeline units + Playwright smoke test
+node --test tests/logic.test.js   # logic.js
 ```
 
 The smoke test needs `pip install -r tests/requirements.txt` and `playwright install chromium`.
