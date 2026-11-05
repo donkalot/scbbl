@@ -15,6 +15,24 @@ This is an unofficial fan site, not affiliated with SuperCoach, News Corp or Cri
 - **Matches**: every BBL|16 fixture with a rain-risk rating. Within 15 days of a match it comes from the Open-Meteo hourly forecast at the ground; before that, from how often the same window (±3 days, past 10 years) has had 1 mm or more. A match page shows the hourly forecast, the squads until the toss, then both XIs with live batting, bowling, fielding and SC points. It updates every 30 seconds while the match is on. Pick a captain from your squad for ×2, and see your squad's total for the match and the round so far.
 - **Roles**: club moves, batting-order shifts, newly opening, started or stopped bowling, and curated news. Shifts compare each player's last 3 games with their earlier games over the last 3 seasons.
 
+## Alerts
+
+`worker/` is a Cloudflare Worker that runs every minute and posts to [ntfy](https://ntfy.sh/). Subscribe in the free ntfy app to `scbbl-all`, or to one team, such as `scbbl-hea` or `scbbl-six`. For each league match it sends:
+
+- **T-60 and T-30**: start time, venue, rain risk from the forecast, and squad players who are unavailable that day.
+- **XIs named**: both XIs, with captain and keeper marked, the squad players who were left out, and the toss result. It's sent once the cricket.com.au scorecard lists players, which happens at the toss.
+
+A reminder whose window has already passed is skipped, not sent late. What has been sent is recorded per match and topic in KV, so a failed post to one topic is retried the next minute without repeating the others.
+
+Deploy:
+
+```
+cd worker
+npx wrangler kv namespace create SENT   # paste the id into wrangler.toml
+npx wrangler secret put NTFY_TOKEN      # optional ntfy access token
+npx wrangler deploy
+```
+
 ## Data
 
 | What | Source | Where |
@@ -58,8 +76,10 @@ python -m pipeline.build
 
 ```
 python -m pytest -q               # pipeline units + Playwright smoke test
-node --test tests/logic.test.js   # logic.js
+node --test tests/logic.test.js worker/test/notify.test.js   # logic.js, notifier
 ```
+
+To try the Worker locally, run `npx wrangler dev --test-scheduled --var SITE:<url> --var NTFY:<url>` and trigger a tick with `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"`.
 
 The smoke test needs `pip install -r tests/requirements.txt` and `playwright install chromium`.
 
@@ -70,6 +90,7 @@ index.html, app.js   UI (hash router, no build step)
 logic.js             pure functions shared by the UI and node tests
 sw.js                network-first service worker (offline fallback)
 pipeline/            Python 3.12, standard library only
+worker/              ntfy notifier (Cloudflare Worker, cron every minute)
 curated/             hand-edited inputs
 data/                generated, committed
 ```
