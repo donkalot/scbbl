@@ -156,6 +156,9 @@ def test_matches_list_shows_every_fixture_with_historical_rain(server, page):
     expect(rows).to_have_count(44)
     expect(rows.first.locator('.rain')).to_contain_text('hist.')
     expect(page.locator('#tabs a.on')).to_have_text('Matches')
+    links = page.locator('#alerts a[href^="https://ntfy.sh/scbbl-"]')
+    expect(links).to_have_count(9)
+    expect(links.last).to_have_attribute('href', 'https://ntfy.sh/scbbl-thu')
 
 
 def test_match_page_scores_the_replayed_scorecard(server, page):

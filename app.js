@@ -540,6 +540,11 @@
     $app.innerHTML = `
       <h2>Matches</h2>
       <div class="row" style="margin-bottom:10px"><a href="#/matches${all ? '' : '?all=1'}"><button class="${all ? 'on' : ''}">Show completed</button></a></div>
+      <details class="card" id="alerts"><summary><b>Get match alerts on your phone</b></summary>
+        <p>Install the free <a href="https://ntfy.sh/">ntfy</a> app (Android or iPhone) and subscribe to a topic. For every match you get a reminder an hour before, with rain risk and unavailable squad players, then both XIs at the toss with who was left out.</p>
+        <div class="row">${['all', ...L.TEAMS].map(t => `<a href="https://ntfy.sh/scbbl-${t.toLowerCase()}" target="_blank" rel="noopener">${t === 'all' ? '<span class="pill">All matches</span>' : team(t)}</a>`).join('')}</div>
+        <p class="muted">Topic names are scbbl-all or scbbl- plus the team code, for example scbbl-hea. Links open the topic in the browser, where you can also subscribe.</p>
+      </details>
       <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match, marked early beyond ${EARLY_DAYS} days because it often changes. Before that it's how often the same window has been wet over the past 10 years. Tap a match for team sheets and live SC points.</p>
       <div class="scroll"><table id="mtable">
         <thead><tr><th class="l">When (AEDT)</th><th class="l">Round</th><th class="l">Match</th><th class="l">Venue</th><th class="l">Rain</th><th class="l">Score</th></tr></thead>

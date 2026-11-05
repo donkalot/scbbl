@@ -8,7 +8,7 @@ crons = ["* * * * *"]
 # Create with: wrangler kv namespace create SENT, then paste the id here.
 [[kv_namespaces]]
 binding = "SENT"
-id = "REPLACE_WITH_KV_ID"
+id = "1036821abe0f4b6b94fe68ee1c1f9f8a"
 
 [vars]
 SITE = "https://donkalot.github.io/scbbl"

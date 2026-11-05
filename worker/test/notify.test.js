@@ -48,11 +48,12 @@ function world({ card = EMPTY, failTopic = null, forecast = true } = {}) {
 
 test.beforeEach(resetCache);
 
-test('windows open at T-60, T-30 and T-75 for the XI, and finals with TBC teams never fire', () => {
+test('windows open at T-60 and T-75 for the XI, there is no T-30, and finals with TBC teams never fire', () => {
   assert.deepEqual(due(HEA_V_SCO, at(-76)), []);
   assert.deepEqual(due(HEA_V_SCO, at(-61)), ['xi']);
   assert.deepEqual(due(HEA_V_SCO, at(-60)), ['t60', 'xi']);
-  assert.deepEqual(due(HEA_V_SCO, at(-30)), ['t30', 'xi']);
+  assert.deepEqual(due(HEA_V_SCO, at(-31)), ['t60', 'xi']);
+  assert.deepEqual(due(HEA_V_SCO, at(-30)), ['xi']);
   assert.deepEqual(due(HEA_V_SCO, at(29)), ['xi']);
   assert.deepEqual(due(HEA_V_SCO, at(30)), []);
   const final = DATA.fixture.find(m => m.home === 'TBC');
@@ -90,8 +91,7 @@ test('reminder still goes out when the forecast fails, and lists unavailable pla
 test('XI alert waits for the toss, then names the XIs and who missed out', async () => {
   const w = world();
   await w.tick(-60);
-  assert.deepEqual(await w.tick(-30), ['40745 t30 scbbl-all', '40745 t30 scbbl-hea', '40745 t30 scbbl-sco']);
-  assert.deepEqual(await w.tick(-25), []);
+  assert.deepEqual(await w.tick(-30), []);
   w.card = CARD;
   const sent = await w.tick(-24);
   assert.deepEqual(sent, ['40745 xi scbbl-all', '40745 xi scbbl-hea', '40745 xi scbbl-sco']);
@@ -122,7 +122,8 @@ test('a failed topic is retried alone next minute', async () => {
 
 test('a missed T-60 window is not sent late', async () => {
   const w = world();
-  assert.deepEqual(await w.tick(-10), ['40745 t30 scbbl-all', '40745 t30 scbbl-hea', '40745 t30 scbbl-sco']);
+  assert.deepEqual(await w.tick(-30), []);
+  assert.equal(w.posts.length, 0);
 });
 
 test('quiet minutes touch no KV and NTFY_TOKEN is sent as Bearer', async () => {

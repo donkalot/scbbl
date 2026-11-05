@@ -19,7 +19,7 @@ This is an unofficial fan site, not affiliated with SuperCoach, News Corp or Cri
 
 `worker/` is a Cloudflare Worker that runs every minute and posts to [ntfy](https://ntfy.sh/). Subscribe in the free ntfy app to `scbbl-all`, or to one team, such as `scbbl-hea` or `scbbl-six`. For each league match it sends:
 
-- **T-60 and T-30**: start time, venue, rain risk from the forecast, and squad players who are unavailable that day.
+- **T-60**: start time, venue, rain risk from the forecast, and squad players who are unavailable that day.
 - **XIs named**: both XIs, with captain and keeper marked, the squad players who were left out, and the toss result. It's sent once the cricket.com.au scorecard lists players, which happens at the toss.
 
 A reminder whose window has already passed is skipped, not sent late. What has been sent is recorded per match and topic in KV, so a failed post to one topic is retried the next minute without repeating the others.

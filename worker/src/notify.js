@@ -4,7 +4,7 @@ const CA = 'https://apiv2.cricket.com.au/web/views/scorecard?jsconfig=eccn%3Atru
 const FORECAST = 'https://api.open-meteo.com/v1/forecast?hourly=precipitation_probability,precipitation&timezone=GMT&forecast_days=16';
 const MIN = 60e3;
 // Minutes relative to the scheduled start. A missed window is skipped, never caught up late.
-export const WINDOWS = { t60: [-60, -30], t30: [-30, 0], xi: [-75, 30] };
+export const WINDOWS = { t60: [-60, -30], xi: [-75, 30] };
 const SITE_TTL = 10 * MIN;
 const FETCH_MS = 8000;
 
@@ -108,10 +108,9 @@ async function tickMatch(m, kinds, env, data, fetchFn) {
   }
   const msgs = [];
   if (xi) msgs.push(['xi', xi]);
-  for (const kind of ['t60', 't30']) {
-    if (!kinds.includes(kind) || !todo(kind).length) continue;
+  if (kinds.includes('t60') && todo('t60').length) {
     const xiSent = xi || tops.some(t => done.has(`xi:${t}`));
-    msgs.push([kind, await reminder(m, kind === 't60' ? 60 : 30, data, fetchFn, xiSent)]);
+    msgs.push(['t60', await reminder(m, 60, data, fetchFn, xiSent)]);
   }
   const jobs = msgs.flatMap(([kind, msg]) => todo(kind).map(t => ({ kind, t, msg })));
   const ok = await Promise.all(jobs.map(j => publish(env, fetchFn, j.t, j.msg, click).catch(() => false)));
