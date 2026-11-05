@@ -123,3 +123,91 @@ def test_squad_add_shows_in_planner(server, page):
 def test_availability_lists_ruled_out_player(server, page):
     page.goto(server + '#/availability')
     expect(page.locator('#app table tbody tr', has_text='Jason Behrendorff')).to_have_count(1)
+
+
+CA_CARD = ROOT / 'tests' / 'fixtures' / 'ca_scorecard_23768.json'
+HEA_V_SCO = 40745  # BBL|16 fixture the BBL|15 HEA v SCO scorecard is replayed against
+EMPTY_CARD = json.dumps({'players': [], 'fixture': {'innings': []}})
+
+
+def _mock_feeds(page, rain_at=None):
+    """Replay a finished CA scorecard for HEA v SCO (others pre-toss) and serve a dry forecast."""
+    def ca(route):
+        body = CA_CARD.read_text(encoding='utf-8') if f'fixtureId={HEA_V_SCO}' in route.request.url else EMPTY_CARD
+        route.fulfill(body=body, content_type='application/json', headers={'access-control-allow-origin': '*'})
+
+    def meteo(route):
+        times = [f'2027-01-{d:02d}T{h:02d}:00' for d in range(7, 23) for h in range(24)]
+        p = [70 if t == rain_at else 5 for t in times]
+        route.fulfill(body=json.dumps({'hourly': {'time': times, 'precipitation_probability': p,
+                                                  'precipitation': [0.0] * len(times)}}),
+                      content_type='application/json', headers={'access-control-allow-origin': '*'})
+    page.route('https://apiv2.cricket.com.au/**', ca)
+    page.route('https://api.open-meteo.com/**', meteo)
+
+
+def test_matches_list_shows_every_fixture_with_historical_rain(server, page):
+    page.clock.set_fixed_time('2026-11-05T00:00:00Z')
+    _mock_feeds(page)
+    page.goto(server + '#/matches')
+    rows = page.locator('#mtable tbody tr')
+    expect(rows).to_have_count(44)
+    expect(rows.first.locator('.rain')).to_contain_text('hist.')
+    expect(page.locator('#tabs a.on')).to_have_text('Matches')
+
+
+def test_match_page_scores_the_replayed_scorecard(server, page):
+    page.clock.set_fixed_time('2027-01-07T00:00:00Z')
+    _mock_feeds(page, rain_at='2027-01-08T10:00')
+    wild = _squad_pid('HEA', 'Jack Wildermuth')
+    page.add_init_script(f"localStorage.setItem('scbbl-squad', JSON.stringify(['{wild}']))")
+    page.goto(server + f'#/match/{HEA_V_SCO}')
+    expect(page.locator('#rain .pill')).to_have_text('Rain High')
+    def row_of(n):
+        return page.locator('#live tbody tr').filter(has=page.locator('td.name', has_text=n))
+    row = row_of('Jack Wildermuth')
+    expect(row.locator('td.sc')).to_have_text('182')
+    expect(row_of('Cooper Connolly').locator('td.sc')).to_have_text('118')
+    expect(page.locator('#live h3')).to_have_count(2)
+    expect(page.locator('#mtotal')).to_have_text('182')
+    row.locator('button[data-cap]').click()
+    expect(row.locator('td.sc')).to_have_text('364 ×2')
+    expect(page.locator('#mtotal')).to_have_text('364')
+    expect(page.locator('#rtotal')).to_have_text('364')
+
+
+def test_match_page_before_the_toss_shows_squads(server, page):
+    page.clock.set_fixed_time('2026-11-05T00:00:00Z')
+    _mock_feeds(page)
+    page.goto(server + '#/match/40719')
+    expect(page.locator('#live')).to_contain_text("XIs aren't named yet")
+    expect(page.locator('#live .stat')).to_have_count(2)
+    expect(page.locator('#rain')).to_contain_text('Too far out for a forecast')
+
+
+def test_live_match_polls_until_you_leave(server, page):
+    live = json.loads(CA_CARD.read_text(encoding='utf-8'))
+    live['fixture'].update(isCompleted=False, isLive=True, resultText='')
+    hits = []
+
+    def ca(route):
+        if f'fixtureId={HEA_V_SCO}' in route.request.url:
+            hits.append(route.request.url)
+        route.fulfill(body=json.dumps(live), content_type='application/json', headers={'access-control-allow-origin': '*'})
+    page.clock.install(time='2027-01-08T09:00:00Z')
+    _mock_feeds(page)
+    page.route('https://apiv2.cricket.com.au/**', ca)
+    page.goto(server + f'#/match/{HEA_V_SCO}')
+    expect(page.locator('#live')).to_contain_text('Updates every 30 seconds')
+    expect(page.locator('#live tbody tr').filter(has=page.locator('td.name', has_text='Jack Wildermuth'))
+           .locator('.pill.ok')).to_have_text('in')
+    first = len(hits)
+    page.clock.run_for(31_000)
+    page.wait_for_timeout(300)
+    assert len(hits) == first + 1
+    page.evaluate("location.hash = '#/matches'")
+    expect(page.locator('#mtable tr[data-id="%d"] .status' % HEA_V_SCO)).to_contain_text('HEA 258/2')
+    left = len(hits)
+    page.clock.run_for(65_000)
+    page.wait_for_timeout(300)
+    assert len(hits) == left

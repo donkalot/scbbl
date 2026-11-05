@@ -93,3 +93,50 @@ test('innings text for one and two innings', () => {
   assert.equal(L.battingText([]), '');
   assert.equal(L.bowlingText([[24, 31, 2], [12, 20, 1]]), '2/31 & 1/20');
 });
+
+const scoring = data('scoring.json');
+
+test('scPoints matches the Python sc_points on every BBL|15 line', () => {
+  const lines = data('matches/2025-26.json').flatMap(m => m.lines);
+  assert.ok(lines.length > 900);
+  for (const l of lines) assert.equal(L.scPoints(l, scoring), l.sc, JSON.stringify(l));
+});
+
+test('a CA scorecard gives the Cricsheet points, apart from how shared run-outs are credited', () => {
+  const card = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'ca_scorecard_23768.json'), 'utf8'));
+  const idmap = data('idmap.json');
+  const cs = data('matches/2025-26.json').find(m => m.id === '1493243').lines;
+  const lines = L.caLines(card);
+  assert.equal(lines.length, 22);
+  let checked = 0;
+  for (const l of lines) {
+    const c = cs.find(x => x.pid === idmap[l.ca] && !x.sub);
+    if (!c) continue;
+    checked++;
+    assert.equal(L.scPoints({ ...l, ro: c.ro, ro_solo: c.ro_solo }, scoring), c.sc, l.name);
+  }
+  assert.equal(checked, 22);
+});
+
+test('rain bands from forecast hours and from climatology', () => {
+  assert.equal(L.rainRisk([]), null);
+  assert.equal(L.rainRisk([{ p: 10, mm: 0 }, { p: 20, mm: 0.1 }]).level, 'Low');
+  assert.equal(L.rainRisk([{ p: 35, mm: 0 }]).level, 'Med');
+  assert.equal(L.rainRisk([{ p: 20, mm: 2 }, { p: 20, mm: 1.5 }]).level, 'High');
+  assert.equal(L.climateRisk({ n: 70, wet: 5, heavy: 1 }).level, 'Low');
+  assert.equal(L.climateRisk({ n: 70, wet: 7, heavy: 1 }).level, 'Med');
+  assert.equal(L.climateRisk({ n: 70, wet: 14, heavy: 2 }).level, 'High');
+});
+
+test('window hours use Open-Meteo end-of-hour labels', () => {
+  assert.deepEqual(L.windowHours('2026-12-12T09:10:00Z', '2026-12-12T11:40:00Z'),
+    ['2026-12-12T10:00', '2026-12-12T11:00', '2026-12-12T12:00']);
+});
+
+test('CA players map by id, then by surname and initial within the squad', () => {
+  const rows = [{ pid: 'a', n: 'Jonny Bairstow' }, { pid: 'b', n: 'Tom Curran' }, { pid: 'c', n: 'Sam Curran' }];
+  assert.equal(L.matchPid({ ca: 1, name: 'X' }, { 1: 'z' }, rows), 'z');
+  assert.equal(L.matchPid({ ca: 2, name: 'Jonathan Bairstow' }, {}, rows), 'a');
+  assert.equal(L.matchPid({ ca: 3, name: 'Tom Curran' }, {}, rows), 'b');
+  assert.equal(L.matchPid({ ca: 4, name: 'T. Smith' }, {}, rows), null);
+});

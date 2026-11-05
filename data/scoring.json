@@ -1,0 +1,1 @@
+{"batting":{"run":1,"sr_min_runs":20,"sr_bands":[[160,25],[150,20],[140,15],[130,10],[120,5]],"milestones":[[100,20],[50,10]]},"bowling":{"wicket":20,"haul_every":3,"haul_bonus":10,"maiden":15,"dot":1,"extra":-1,"er_min_balls":18,"er_bands":[[4,25],[5,20],[6,15],[7,10],[8,5]]},"fielding":{"catch":10,"run_out":20,"stumping":15}}

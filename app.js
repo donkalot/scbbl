@@ -406,15 +406,249 @@
       </div>`).join('') || '<p class="muted">Nothing here yet.</p>'}</div>`;
   }
 
+  // ---------- matches ----------
+  const CA = 'https://apiv2.cricket.com.au/web/views/scorecard?jsconfig=eccn%3Atrue&format=json&fixtureId=';
+  const FORECAST = 'https://api.open-meteo.com/v1/forecast?hourly=precipitation_probability,precipitation&timezone=GMT&forecast_days=16';
+  const FORECAST_DAYS = 15;
+  const CAPTAIN_KEY = 'scbbl-captain';
+  const lazy = f => { let p; return () => p || (p = json(`data/${f}.json`)); };
+  const climate = lazy('climate'), scoring = lazy('scoring'), idmap = lazy('idmap');
+  const forecasts = {}, cards = {};
+  let view = 0, timer = null;
+
+  const roundOfMatch = m => L.roundOf(L.localDate(m.start), D.rounds.rounds);
+  const roundName = r => (r ? (r.finals ? 'Finals' : `R${r.round}`) : '');
+  // From the toss (~T-30) until well after the scheduled finish, allowing for delays.
+  const near = m => Date.now() > Date.parse(m.start) - 90 * 60e3 && Date.now() < Date.parse(m.end) + 3 * 3600e3;
+
+  function forecast(v) {
+    const k = `${v.lat},${v.lon}`;
+    return forecasts[k] || (forecasts[k] = fetch(`${FORECAST}&latitude=${v.lat}&longitude=${v.lon}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => j && Object.fromEntries(j.hourly.time.map((t, i) => [t, { p: j.hourly.precipitation_probability[i], mm: j.hourly.precipitation[i] }])))
+      .catch(() => null));
+  }
+
+  async function rainFor(m) {
+    if (!m.venue || Date.parse(m.end) < Date.now()) return null;
+    if (Date.parse(m.start) - Date.now() < FORECAST_DAYS * 864e5) {
+      const f = await forecast(m.venue);
+      const hours = f && L.windowHours(m.start, m.end).map(h => f[h] && { h, ...f[h] });
+      if (hours && hours.every(Boolean)) return { kind: 'forecast', hours, ...L.rainRisk(hours) };
+    }
+    const c = L.climateRisk((await climate())[m.id]);
+    return c && { kind: 'climate', ...c };
+  }
+
+  const RAIN_CLS = { Low: 'ok', Med: 'warn', High: 'no' };
+  function rainPill(r) {
+    if (!r) return '';
+    const [txt, title] = r.kind === 'forecast'
+      ? [`${r.maxP}% · ${fix(r.mm)} mm`, 'Open-Meteo forecast over the match window: highest hourly chance of rain, and total rain']
+      : [`${Math.round(100 * r.wet)}% hist.`, 'Share of the same window over the past 10 years (±3 days) with at least 1 mm of rain'];
+    return `<span class="pill ${RAIN_CLS[r.level]}" title="${title}">Rain ${r.level}</span> <span class="muted">${txt}</span>`;
+  }
+
+  // cricket.com.au caches the scorecard for 30 s, so there's no point asking more often.
+  function card(id) {
+    const c = cards[id];
+    if (c && Date.now() - c.t < 25e3) return c.p;
+    const p = fetch(CA + id).then(r => {
+      if (!r.ok) throw new Error(`cricket.com.au HTTP ${r.status}`);
+      return r.json();
+    });
+    cards[id] = { t: Date.now(), p };
+    p.catch(() => { delete cards[id]; });
+    return p;
+  }
+
+  const teamCode = (c, m, teamId) => (teamId === (c.fixture || {}).homeTeamId ? m.home : m.away);
+  function scoreText(c, m) {
+    return ((c.fixture && c.fixture.innings) || [])
+      .map(i => `${teamCode(c, m, i.battingTeamId)} ${i.runsScored}/${i.numberOfWicketsFallen} (${i.oversBowled})`).join(' · ');
+  }
+  function statusText(c) {
+    const f = c.fixture || {};
+    return f.resultText || (f.isLive || f.isInProgress ? 'Live' : f.tossResult || '');
+  }
+
+  function cardLines(c, m, ids, table) {
+    return L.caLines(c).map(l => {
+      const code = teamCode(c, m, l.team);
+      return { ...l, code, pid: L.matchPid(l, ids, D.squads.teams[code] || []), sc: L.scPoints(l, table) };
+    });
+  }
+  function captains() {
+    try { return JSON.parse(localStorage.getItem(CAPTAIN_KEY)) || {}; } catch { return {}; }
+  }
+  function squadTotal(lines, cap) {
+    const mine = new Set(mySquad());
+    return lines.filter(l => mine.has(l.pid)).reduce((t, l) => t + l.sc * (l.pid === cap ? 2 : 1), 0);
+  }
+
+  function viewMatches(params) {
+    const all = params.get('all') === '1';
+    const list = D.fixture.slice().sort((a, b) => a.start.localeCompare(b.start))
+      .filter(m => all || Date.parse(m.end) + 3 * 3600e3 > Date.now());
+    $app.innerHTML = `
+      <h2>Matches</h2>
+      <div class="row" style="margin-bottom:10px"><a href="#/matches${all ? '' : '?all=1'}"><button class="${all ? 'on' : ''}">Show completed</button></a></div>
+      <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match. Before that it's how often the same window has been wet over the past 10 years. Tap a match for team sheets and live SC points.</p>
+      <div class="scroll"><table id="mtable">
+        <thead><tr><th class="l">When (AEDT)</th><th class="l">Round</th><th class="l">Match</th><th class="l">Venue</th><th class="l">Rain</th><th class="l">Score</th></tr></thead>
+        <tbody>${list.map(m => `<tr data-id="${m.id}">
+          <td class="l">${esc(when(m.start))}</td><td class="l">${roundName(roundOfMatch(m))}</td>
+          <td class="l name"><a href="#/match/${m.id}">${team(m.home)} v ${team(m.away)}</a> <span class="muted">${esc(m.name)}</span></td>
+          <td class="l muted">${esc(m.venue ? m.venue.city : 'TBC')}</td><td class="l rain"></td><td class="l status"></td></tr>`).join('')
+          || '<tr><td colspan="6" class="l muted">No matches left this season.</td></tr>'}</tbody></table></div>`;
+    const cell = (m, cls) => document.querySelector(`#mtable tr[data-id="${m.id}"] .${cls}`);
+    for (const m of list) {
+      rainFor(m).then(r => { const el = cell(m, 'rain'); if (el) el.innerHTML = rainPill(r); });
+      if (near(m)) {
+        card(m.id).then(c => {
+          const el = cell(m, 'status');
+          if (el) el.innerHTML = `${esc(scoreText(c, m))} <span class="muted">${esc(statusText(c))}</span>`;
+        }).catch(() => {});
+      }
+    }
+  }
+
+  function renderRain(r) {
+    const el = document.getElementById('rain');
+    if (!el || !r) return;
+    if (r.kind === 'climate') {
+      el.innerHTML = `<div class="card">${rainPill(r)}<p class="muted" style="margin:6px 0 0">Too far out for a forecast. Over the past 10 years (±3 days), ${Math.round(100 * r.wet)}% of these match windows had at least 1 mm of rain and ${Math.round(100 * r.heavy)}% had 5 mm or more.</p></div>`;
+      return;
+    }
+    const hour = h => new Date(Date.parse(h + ':00Z') - 3600e3).toLocaleTimeString('en-AU', { timeZone: 'Australia/Sydney', hour: 'numeric' });
+    el.innerHTML = `<div class="card">${rainPill(r)}
+      <div class="scroll" style="margin-top:6px"><table><tbody>
+        <tr><th class="l">From (AEDT)</th>${r.hours.map(h => `<th>${esc(hour(h.h))}</th>`).join('')}</tr>
+        <tr><td class="l muted">Chance of rain</td>${r.hours.map(h => `<td class="${h.p >= 60 ? 'g0' : h.p >= 30 ? 'gx' : ''}">${h.p ?? '–'}%</td>`).join('')}</tr>
+        <tr><td class="l muted">Rain (mm)</td>${r.hours.map(h => `<td>${fix(h.mm)}</td>`).join('')}</tr>
+      </tbody></table></div><p class="muted" style="margin:6px 0 0">Open-Meteo forecast at the ground.</p></div>`;
+  }
+
+  function teamSheets(m) {
+    const mine = new Set(mySquad());
+    return `<div class="card"><b>XIs aren't named yet.</b> They appear at the toss, about 30 minutes before the start. Until then, here are the squads.</div>
+      <div class="stats">${[m.home, m.away].filter(t => D.squads.teams[t]).map(t => `<div class="stat">${team(t)} <span class="muted">squad</span>
+        ${D.squads.teams[t].map(r => `<div class="${mine.has(r.pid) ? 'mine' : ''}">${link(r.pid)}${r.c ? ' <span class="pill">C</span>' : ''}${r.os ? ` <span class="pill os">${esc(r.os)}</span>` : ''}</div>`).join('')}</div>`).join('')}</div>`;
+  }
+
+  function xiTable(lines, t, cap, roundNo, live) {
+    const mine = new Set(mySquad());
+    const rows = lines.filter(l => l.code === t).sort((a, b) => (a.bat_pos ?? 99) - (b.bat_pos ?? 99));
+    const inXI = new Set(rows.map(l => l.pid));
+    const out = (D.squads.teams[t] || []).filter(r => !inXI.has(r.pid));
+    const badge = (on, s) => (on ? ` <span class="pill">${s}</span>` : '');
+    return `<h3>${team(t)} XI</h3><div class="scroll"><table class="pin">
+      <thead><tr><th class="l">Player</th><th></th><th>Bat</th><th>4s/6s</th><th>SR</th><th class="l">Out</th><th>Bowl</th><th>Dots</th><th>Econ</th><th>Field</th><th>SC</th></tr></thead>
+      <tbody>${rows.map(l => {
+        const isCap = l.pid && l.pid === cap;
+        return `<tr class="${mine.has(l.pid) ? 'mine' : ''}">
+        <td class="l name">${l.pid ? link(l.pid) : esc(l.name)}${badge(l.captain, 'capt')}${badge(l.keeper, 'WK')}${badge(l.db, 'DB')}${badge(l.df, 'DF')}</td>
+        <td>${mine.has(l.pid) ? `<button class="cap${isCap ? ' on' : ''}" data-cap="${esc(l.pid)}" title="${isCap ? 'Remove as' : 'Make'} my captain for ${roundNo ? 'round ' + roundNo : 'this round'} (double points)">C</button>` : ''}</td>
+        <td>${l.batted ? `${l.r}${l.out ? '' : '*'} (${l.bf})${live && l.batting ? ' <span class="pill ok">in</span>' : ''}` : ''}</td>
+        <td>${l.batted ? `${l.f4}/${l.s6}` : ''}</td><td>${l.bf ? fix(100 * l.r / l.bf, 0) : ''}</td>
+        <td class="l muted" style="white-space:normal;min-width:120px">${esc(l.how)}</td>
+        <td>${l.lb ? `${L.overs(l.lb)}-${l.mdn}-${l.rc}-${l.wk}` : ''}</td><td>${l.lb ? l.dots : ''}</td><td>${l.lb ? fix(6 * l.rc / l.lb, 2) : ''}</td>
+        <td>${[l.ct && `${l.ct}ct`, l.st && `${l.st}st`, l.ro && `${l.ro}ro`].filter(Boolean).join(' ')}</td>
+        <td class="sc"><b>${isCap ? 2 * l.sc : l.sc}</b>${isCap ? ' <span class="muted">×2</span>' : ''}</td></tr>`;
+      }).join('')}</tbody></table></div>
+      ${out.length ? `<p class="muted">Not in the XI: ${out.map(r => `${mine.has(r.pid) ? '<span class="pill no">' : ''}${esc(r.n)}${mine.has(r.pid) ? '</span>' : ''}`).join(', ')}</p>` : ''}`;
+  }
+
+  async function viewMatch(id) {
+    const m = D.fixture.find(x => String(x.id) === id);
+    if (!m) {
+      $app.innerHTML = `<div class="card"><h2>Match not found</h2><a href="#/matches">Back to matches</a></div>`;
+      return;
+    }
+    const token = view;
+    const r = roundOfMatch(m);
+    const rkey = r ? String(r.round) : 'x';
+    $app.innerHTML = `
+      <p><a href="#/matches">← Matches</a></p>
+      <div class="row"><h2 style="margin:0">${team(m.home)} v ${team(m.away)}</h2><span class="muted">${esc(m.name)}${r ? ` · ${r.finals ? 'Finals' : 'Round ' + r.round}` : ''}</span></div>
+      <p class="muted">${esc(when(m.start))} AEDT · ${esc(m.venue ? `${m.venue.name}, ${m.venue.city}` : 'Venue TBC')}</p>
+      <div id="rain"></div>
+      <div id="live"><p class="muted">Loading the scorecard…</p></div>`;
+    rainFor(m).then(x => { if (token === view) renderRain(x); });
+    const [table, ids] = await Promise.all([scoring(), idmap()]);
+    // The rest of the round: started matches only. Finished ones are fetched once, live ones every poll.
+    const others = D.fixture.filter(x => x.id !== m.id && roundOfMatch(x) === r && r && Date.parse(x.start) < Date.now());
+    const done = {};
+    let last = null;
+
+    async function roundTotal(lines, cap) {
+      let t = squadTotal(lines, cap);
+      for (const x of others) {
+        const p = !near(x) && done[x.id] ? done[x.id] : (done[x.id] = card(x.id).catch(() => null));
+        const c = await p;
+        if (c) t += squadTotal(cardLines(c, x, ids, table), cap);
+      }
+      return t;
+    }
+
+    function draw(c) {
+      const el = document.getElementById('live');
+      if (!el || token !== view) return;
+      const lines = cardLines(c, m, ids, table);
+      const cap = captains()[rkey];
+      const score = scoreText(c, m), status = statusText(c);
+      el.innerHTML = `
+        ${score || status ? `<div class="card"><b>${esc(score)}</b> <span class="muted">${esc(status)}</span></div>` : ''}
+        ${lines.length ? `
+          <div class="stats"><div class="stat"><span class="muted">My squad, this match</span><b id="mtotal">${squadTotal(lines, cap)}</b></div>
+            <div class="stat"><span class="muted">My squad, ${r ? (r.finals ? 'finals' : 'round ' + r.round) : 'round'} so far</span><b id="rtotal">…</b></div></div>
+          ${[m.home, m.away].map(t => xiTable(lines, t, cap, r && r.round, !(c.fixture && c.fixture.isCompleted))).join('')}
+          <p class="muted">Unofficial: SC points computed from the cricket.com.au scorecard with the published scoring table. The official SuperCoach score can differ. A run-out is credited in full to the one fielder cricket.com.au names.${near(m) && !(c.fixture && c.fixture.isCompleted) ? ' Updates every 30 seconds.' : ''}</p>`
+        : teamSheets(m)}`;
+      if (lines.length) {
+        roundTotal(lines, cap).then(t => { const x = document.getElementById('rtotal'); if (x && token === view) x.textContent = t; });
+      }
+    }
+
+    async function tick() {
+      if (token !== view) return;
+      if (!last || document.visibilityState === 'visible') {
+        try {
+          last = await card(m.id);
+          draw(last);
+        } catch (err) {
+          const el = document.getElementById('live');
+          if (el && !last && token === view) el.innerHTML = `<div class="card">Couldn't load the scorecard from cricket.com.au (${esc(err.message)}).${near(m) ? ' Retrying every 30 seconds.' : ''}</div>`;
+        }
+      }
+      if (token === view && near(m) && !(last && last.fixture && last.fixture.isCompleted)) timer = setTimeout(tick, 30e3);
+    }
+
+    $app.onclick = e => {
+      const b = e.target.closest('[data-cap]');
+      if (!b || !last) return;
+      const caps = captains();
+      if (caps[rkey] === b.dataset.cap) delete caps[rkey]; else caps[rkey] = b.dataset.cap;
+      localStorage.setItem(CAPTAIN_KEY, JSON.stringify(caps));
+      draw(last);
+    };
+    await tick();
+  }
+
   // ---------- router ----------
   async function route() {
+    view += 1;
+    clearTimeout(timer);
+    $app.onclick = null;
     const [path, query] = (location.hash || '#/').slice(1).split('?');
     const params = new URLSearchParams(query || '');
     const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
-    const tab = parts[0] === 'player' ? 'players' : parts[0] || 'players';
+    const tab = { player: 'players', match: 'matches' }[parts[0]] || parts[0] || 'players';
     document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
     try {
       if (parts[0] === 'player' && parts[1]) return await viewPlayer(parts[1]);
+      if (parts[0] === 'matches') return viewMatches(params);
+      if (parts[0] === 'match' && parts[1]) return await viewMatch(parts[1]);
       if (parts[0] === 'planner') return viewPlanner(params);
       if (parts[0] === 'availability') return viewAvailability();
       if (parts[0] === 'roles') return viewRoles(params);

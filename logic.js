@@ -151,6 +151,101 @@
   }
   const bowlingText = w => w.map(([, rc, wk]) => `${wk}/${rc}`).join(' & ');
 
+  function band(v, bands, higherIsBetter) {
+    const hit = bands.find(([edge]) => (higherIsBetter ? v >= edge : v <= edge));
+    return hit ? hit[1] : 0;
+  }
+  const round2 = x => Math.round(x * 100) / 100;
+
+  // Same as pipeline/scoring.py sc_points, so live and historical points agree.
+  function scPoints(l, t) {
+    const bat = t.batting, bwl = t.bowling, fld = t.fielding;
+    let pts = l.r * bat.run;
+    if (l.r >= bat.sr_min_runs && l.bf) pts += band(round2(100 * l.r / l.bf), bat.sr_bands, true);
+    const ms = bat.milestones.find(([runs]) => l.r >= runs);
+    if (ms) pts += ms[1];
+    pts += l.wk * bwl.wicket + Math.floor(l.wk / bwl.haul_every) * bwl.haul_bonus;
+    pts += l.mdn * bwl.maiden + l.dots * bwl.dot + (l.wd + l.nb) * bwl.extra;
+    if (l.lb >= bwl.er_min_balls) pts += band(round2(6 * l.rc / l.lb), bwl.er_bands, false);
+    const shared = l.ro - l.ro_solo;
+    pts += l.ct * fld.catch + l.st * fld.stumping + l.ro_solo * fld.run_out + Math.floor(shared * fld.run_out / 2);
+    return pts;
+  }
+
+  const FIELDED = { Caught: 'ct', 'Caught and bowled': 'ct', Stumped: 'st', RunOut: 'ro' };
+
+  // cricket.com.au views/scorecard -> one line per player in the XIs, shaped like the Cricsheet lines.
+  // CA names a single run-out fielder, so every run-out it lists counts as solo.
+  function caLines(card) {
+    const lines = new Map();
+    for (const p of card.players || []) {
+      lines.set(p.id, {
+        ca: p.id, team: p.teamId, name: p.displayName || p.name, keeper: !!p.isWicketKeeper, captain: !!p.isCaptain,
+        db: !!p.isDesignatedBatter, df: !!p.isDesignatedFielder,
+        r: 0, bf: 0, f4: 0, s6: 0, out: false, batted: false, batting: false, bat_pos: null, how: '',
+        lb: 0, rc: 0, wk: 0, dots: 0, mdn: 0, wd: 0, nb: 0, bowling: false, ct: 0, st: 0, ro: 0, ro_solo: 0,
+      });
+    }
+    for (const inn of (card.fixture && card.fixture.innings) || []) {
+      for (const b of inn.batsmen || []) {
+        const l = lines.get(b.playerId);
+        if (l && 'runsScored' in b) {
+          Object.assign(l, { r: b.runsScored, bf: b.ballsFaced, f4: b.foursScored, s6: b.sixesScored, out: !!b.isOut,
+                             batted: true, batting: !!b.isBatting, bat_pos: b.battingOrder, how: b.dismissalText || '' });
+        }
+        const f = FIELDED[b.dismissalTypeId] && lines.get(b.dismissedByPlayerId);
+        if (f) {
+          f[FIELDED[b.dismissalTypeId]] += 1;
+          if (b.dismissalTypeId === 'RunOut') f.ro_solo += 1;
+        }
+      }
+      for (const w of inn.bowlers || []) {
+        const l = lines.get(w.playerId);
+        if (!l) continue;
+        Object.assign(l, { lb: w.totalBallsBowled, rc: w.runsConceded, wk: w.wicketsTaken, dots: w.dotBalls, mdn: w.maidensBowled,
+                           wd: w.wideBalls, nb: w.noBalls, bowling: !!(w.isOnStrike || w.isNonStrike) });
+      }
+    }
+    return [...lines.values()];
+  }
+
+  // Open-Meteo hourly forecast over the match window: [{p: % chance of rain, mm}] -> band.
+  function rainRisk(hours) {
+    if (!hours.length) return null;
+    const maxP = Math.max(...hours.map(h => h.p ?? 0));
+    const mm = hours.reduce((t, h) => t + (h.mm || 0), 0);
+    const level = mm >= 3 || maxP >= 60 ? 'High' : mm >= 0.5 || maxP >= 30 ? 'Med' : 'Low';
+    return { level, maxP, mm };
+  }
+
+  // data/climate.json entry: share of the same window in past years with at least 1 mm.
+  function climateRisk(c) {
+    if (!c || !c.n) return null;
+    const wet = c.wet / c.n;
+    return { level: wet >= 0.2 ? 'High' : wet >= 0.1 ? 'Med' : 'Low', wet, heavy: c.heavy / c.n };
+  }
+
+  // Open-Meteo labels each hour by its end, so label h covers (h-1, h].
+  function windowHours(start, end) {
+    const out = [];
+    const s = Date.parse(start), e = Date.parse(end);
+    for (let h = Math.floor(s / 3600e3) * 3600e3 + 3600e3; h - 3600e3 < e; h += 3600e3) out.push(new Date(h).toISOString().slice(0, 16));
+    return out;
+  }
+
+  const normName = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean);
+
+  // CA player -> our pid: the CA id map first, then surname plus first initial within that team's squad.
+  function matchPid(line, idmap, squadRows) {
+    if (idmap[line.ca]) return idmap[line.ca];
+    const t = normName(line.name);
+    const hits = squadRows.filter(r => {
+      const s = normName(r.n);
+      return s[s.length - 1] === t[t.length - 1] && s[0][0] === t[0][0];
+    });
+    return hits.length === 1 ? hits[0].pid : null;
+  }
+
   return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, sparkPath, venueSplits, playerLog,
-           sumAggs, aggLine, battingText, bowlingText };
+           sumAggs, aggLine, battingText, bowlingText, scPoints, caLines, rainRisk, climateRisk, windowHours, matchPid };
 });

@@ -47,6 +47,7 @@
   .pill { font-size: .72rem; padding: 1px 7px; border-radius: 9px; background: var(--line); color: var(--muted); display: inline-block; }
   .pill.ok { background: var(--good-bg); color: #22543d; }
   .pill.no { background: var(--bad-bg); color: #742a2a; }
+  .pill.warn { background: var(--warn-bg); color: #744210; }
   .pill.os { background: #e9d8fd; color: #44337a; }
   .g0 { background: var(--bad-bg); color: #742a2a; font-weight: 700; }
   .g2 { background: var(--good-bg); color: #22543d; font-weight: 700; }
@@ -69,6 +70,9 @@
   .tl-bar.unverified { opacity: .7; background-image: repeating-linear-gradient(45deg, transparent 0 6px, rgba(255,255,255,.25) 6px 12px); }
   footer { max-width: 1100px; margin: 24px auto; padding: 0 16px; color: var(--muted); font-size: .82rem; }
   .hidden { display: none !important; }
+  tr.mine td, div.mine, table.pin tr.mine > :first-child { background: #fff8e6; }
+  button.cap { width: 30px; padding: 1px 0; font-weight: 700; }
+  button.cap.on { background: var(--accent); border-color: var(--accent); }
   svg.spark { vertical-align: middle; }
 </style>
 </head>
@@ -80,12 +84,13 @@
     <a href="#/planner" data-tab="planner">Planner</a>
     <a href="#/availability" data-tab="availability">Availability</a>
     <a href="#/roles" data-tab="roles">Roles</a>
+    <a href="#/matches" data-tab="matches">Matches</a>
   </nav>
 </header>
 <main id="app" aria-live="polite"><p class="muted">Loading…</p></main>
 <footer>
   Unofficial fan site, not affiliated with SuperCoach, News Corp or Cricket Australia. SC points are computed from public scorecards using the published scoring table, so official scores can differ.
-  Ball-by-ball history from <a href="https://cricsheet.org/">Cricsheet</a> (ODC-BY). Fixture and live scorecards from cricket.com.au. Squads from Wikipedia.
+  Ball-by-ball history from <a href="https://cricsheet.org/">Cricsheet</a> (ODC-BY). Fixture and live scorecards from cricket.com.au. Squads from Wikipedia. Weather from <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0).
 </footer>
 <script src="logic.js"></script>
 <script src="app.js"></script>
