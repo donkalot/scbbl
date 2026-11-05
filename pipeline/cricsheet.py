@@ -26,12 +26,13 @@ def iter_matches(z):
 
 
 def _blank():
+    # bi/wi: per-innings [runs, balls, out] and [legal balls, conceded, wickets], for multi-innings formats.
     return {'bat_pos': None, 'r': 0, 'bf': 0, 'f4': 0, 's6': 0, 'out': False, 'how': None,
             'lb': 0, 'rc': 0, 'wk': 0, 'dots': 0, 'mdn': 0, 'wd': 0, 'nb': 0,
-            'ct': 0, 'st': 0, 'ro': 0, 'ro_solo': 0, 'batted': False, 'bowled': False}
+            'ct': 0, 'st': 0, 'ro': 0, 'ro_solo': 0, 'batted': False, 'bowled': False, 'bi': [], 'wi': []}
 
 
-def parse_match(mid, d):
+def parse_match(mid, d, code=team_code):
     """One line per XI player: batting, bowling and fielding totals for the match."""
     info = d['info']
     reg = info['registry']['people']
@@ -40,7 +41,7 @@ def parse_match(mid, d):
     for team in teams:
         opp = teams[1] if team == teams[0] else teams[0]
         for name in info['players'][team]:
-            lines[name] = {'pid': reg[name], 'name': name, 'team': team_code(team), 'opp': team_code(opp),
+            lines[name] = {'pid': reg[name], 'name': name, 'team': code(team), 'opp': code(opp),
                            **_blank()}
 
     def get(name):
@@ -54,6 +55,8 @@ def parse_match(mid, d):
         if inn.get('super_over'):
             continue
         order = []
+        ib = defaultdict(lambda: [0, 0, False])
+        iw = defaultdict(lambda: [0, 0, 0])
         for over in inn['overs']:
             per_bowler = defaultdict(lambda: [0, 0])  # legal balls, runs conceded
             for dl in over['deliveries']:
@@ -65,23 +68,28 @@ def parse_match(mid, d):
                 bat = get(dl['batter'])
                 bat['batted'] = True
                 bat['r'] += dl['runs']['batter']
+                ib[dl['batter']][0] += dl['runs']['batter']
                 if not wide:
                     bat['bf'] += 1
+                    ib[dl['batter']][1] += 1
                 if dl['runs']['batter'] == 4 and not dl['runs'].get('non_boundary'):
                     bat['f4'] += 1
                 elif dl['runs']['batter'] == 6:
                     bat['s6'] += 1
                 get(dl['non_striker'])['batted'] = True
+                ib[dl['non_striker']]  # a non-striker who never faces still has an innings (0*)
 
                 bwl = get(dl['bowler'])
                 bwl['bowled'] = True
                 conceded = dl['runs']['batter'] + wide + nb
                 bwl['rc'] += conceded
+                iw[dl['bowler']][1] += conceded
                 bwl['wd'] += 1 if wide else 0
                 bwl['nb'] += 1 if nb else 0
                 legal = not wide and not nb
                 if legal:
                     bwl['lb'] += 1
+                    iw[dl['bowler']][0] += 1
                     if conceded == 0:
                         bwl['dots'] += 1
                 pb = per_bowler[dl['bowler']]
@@ -97,8 +105,10 @@ def parse_match(mid, d):
                     if kind not in NOT_OUT_KINDS:
                         out['out'] = True
                         out['how'] = kind
+                        ib[w['player_out']][2] = True
                     if kind in BOWLER_WICKETS:
                         bwl['wk'] += 1
+                        iw[dl['bowler']][2] += 1
                     fielders = [f['name'] for f in w.get('fielders', []) if 'name' in f]
                     if kind == 'caught' and fielders:
                         get(fielders[0])['ct'] += 1
@@ -116,6 +126,10 @@ def parse_match(mid, d):
                     lines[name]['mdn'] += 1
         for pos, name in enumerate(order, 1):
             lines[name]['bat_pos'] = pos
+        for name, v in ib.items():
+            lines[name]['bi'].append(v)
+        for name, v in iw.items():
+            lines[name]['wi'].append(v)
 
     meta = {
         'id': mid,
@@ -123,16 +137,16 @@ def parse_match(mid, d):
         'date': info['dates'][0],
         'venue': info.get('venue'),
         'city': info.get('city'),
-        'teams': [team_code(t) for t in teams],
-        'result': _result(info.get('outcome', {})),
+        'teams': [code(t) for t in teams],
+        'result': _result(info.get('outcome', {}), code),
         'final': 'stage' in info.get('event', {}) and info['event']['stage'] != 'group',
     }
     return meta, list(lines.values())
 
 
-def _result(o):
+def _result(o, code=team_code):
     if 'winner' in o:
-        return {'winner': team_code(o['winner'])}
+        return {'winner': code(o['winner'])}
     return {'result': o.get('result', 'unknown')}
 
 

@@ -91,6 +91,25 @@ def test_player_page_loads_match_log(server, page):
     expect(page.locator('#last5')).not_to_have_text('–')
 
 
+def test_newcomer_page_shows_other_competitions(server, page):
+    page.goto(server + '#/player/' + _squad_pid('REN', 'Jonny Bairstow'))
+    expect(page.locator('#app h2').first).to_have_text('Jonny Bairstow')
+    table = page.locator('#else table').first
+    expect(table.locator('tbody tr', has_text='The Hundred')).to_have_count(1)
+    expect(table.locator('tbody tr', has_text='IPL')).to_have_count(1)
+    page.click('#else button:has-text("First-class")')
+    expect(table.locator('tbody tr', has_text='Tests')).to_have_count(1)
+    expect(table.locator('tbody tr', has_text='IPL')).to_have_count(0)
+    expect(page.locator('#else table').nth(1).locator('tbody tr')).to_have_count(10)
+
+
+def test_players_list_shows_t20_elsewhere(server, page):
+    page.goto(server + '#/players')
+    page.fill('#q', 'bairstow')
+    cell = page.locator('#ptable tbody tr', has_text='Jonny Bairstow').locator('td').nth(4)
+    expect(cell).to_contain_text('(')
+
+
 def test_squad_add_shows_in_planner(server, page):
     page.goto(server + '#/players')
     page.fill('#q', 'marsh')

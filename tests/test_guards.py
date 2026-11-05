@@ -53,5 +53,8 @@ def test_shrunken_source_fails_and_baseline_only_rises():
     assert guards.check_history({'2024/25': [{}] * 44}, {i: 0 for i in range(400)}, baseline) == []
     problems = guards.check_history({'2024/25': [{}] * 43}, {i: 0 for i in range(299)}, baseline)
     assert len(problems) == 2
-    raised = guards.ratchet({'2024/25': [{}] * 43, '2025/26': [{}] * 44}, {i: 0 for i in range(299)}, baseline)
-    assert raised == {'season_matches': {'2024/25': 44, '2025/26': 44}, 'players': 400}
+    baseline['comp_matches'] = {'ssh': 218}
+    raised = guards.ratchet({'2024/25': [{}] * 43, '2025/26': [{}] * 44}, {i: 0 for i in range(299)}, baseline,
+                            {'ssh': 210, 'hnd': 201})
+    assert raised == {'season_matches': {'2024/25': 44, '2025/26': 44}, 'players': 400,
+                      'comp_matches': {'hnd': 201, 'ssh': 218}}

@@ -114,5 +114,43 @@
     return log.sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, sparkPath, venueSplits, playerLog };
+  const SUMMED = ['m', 'inn', 'no', 'f50', 'h100', 'w5', 'r', 'bf', 'f4', 's6', 'lb', 'rc', 'wk', 'ct', 'st', 'ro'];
+
+  // Career totals for one competition from its season aggregates (data/elsewhere.json).
+  function sumAggs(aggs) {
+    const t = { hs: 0, hsn: false, bb: null };
+    for (const k of SUMMED) t[k] = 0;
+    for (const a of aggs) {
+      for (const k of SUMMED) t[k] += a[k] || 0;
+      if (a.scm) { t.sc = (t.sc || 0) + a.sc; t.scm = (t.scm || 0) + a.scm; }
+      if (a.hs > t.hs || (a.hs === t.hs && a.hsn)) { t.hs = a.hs; t.hsn = a.hsn; }
+      if (a.bb && (!t.bb || a.bb[0] > t.bb[0] || (a.bb[0] === t.bb[0] && a.bb[1] < t.bb[1]))) t.bb = a.bb;
+    }
+    return t;
+  }
+
+  function aggLine(a) {
+    const outs = a.inn - a.no;
+    return {
+      scAvg: a.scm ? a.sc / a.scm : null,
+      batAvg: outs ? a.r / outs : null,
+      sr: a.bf ? 100 * a.r / a.bf : null,
+      econ: a.lb ? 6 * a.rc / a.lb : null,
+      bowlAvg: a.wk ? a.rc / a.wk : null,
+      overs: overs(a.lb),
+      hs: a.inn ? `${a.hs}${a.hsn ? '*' : ''}` : '',
+      bb: a.bb ? `${a.bb[0]}/${a.bb[1]}` : '',
+    };
+  }
+
+  // Per-innings [runs, balls, out] -> "45* (32)" for one innings, "12 & 45*" for two.
+  function battingText(b) {
+    if (!b.length) return '';
+    if (b.length === 1) return `${b[0][0]}${b[0][2] ? '' : '*'} (${b[0][1]})`;
+    return b.map(([r, , out]) => `${r}${out ? '' : '*'}`).join(' & ');
+  }
+  const bowlingText = w => w.map(([, rc, wk]) => `${wk}/${rc}`).join(' & ');
+
+  return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, sparkPath, venueSplits, playerLog,
+           sumAggs, aggLine, battingText, bowlingText };
 });

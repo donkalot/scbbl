@@ -67,3 +67,29 @@ test('season line and overs', () => {
   assert.equal(s.econ, 54 * 6 / 45);
   assert.equal(s.overs, '7.3');
 });
+
+test('sumAggs totals seasons and keeps the best high score and bowling', () => {
+  const base = { inn: 0, no: 0, r: 0, bf: 0, lb: 0, rc: 0, wk: 0 };
+  const t = L.sumAggs([
+    { ...base, m: 3, inn: 3, no: 1, r: 90, bf: 60, hs: 50, hsn: false, bb: [2, 20], lb: 60, rc: 70, wk: 4, sc: 150, scm: 3 },
+    { ...base, m: 2, inn: 2, no: 0, r: 40, bf: 40, hs: 50, hsn: true, bb: [2, 15], lb: 0, rc: 0, wk: 0 },
+  ]);
+  assert.equal(t.m, 5);
+  assert.equal(`${t.hs}${t.hsn ? '*' : ''}`, '50*');
+  assert.deepEqual(t.bb, [2, 15]);
+  assert.equal(t.scm, 3);
+  const a = L.aggLine(t);
+  assert.equal(a.scAvg, 50);
+  assert.equal(a.batAvg, 130 / 4);
+  assert.equal(a.hs, '50*');
+  assert.equal(a.bb, '2/15');
+  assert.equal(a.overs, '10.0');
+  assert.equal(L.aggLine({ ...base, m: 1 }).scAvg, null);
+});
+
+test('innings text for one and two innings', () => {
+  assert.equal(L.battingText([[45, 32, false]]), '45* (32)');
+  assert.equal(L.battingText([[12, 20, true], [45, 70, false]]), '12 & 45*');
+  assert.equal(L.battingText([]), '');
+  assert.equal(L.bowlingText([[24, 31, 2], [12, 20, 1]]), '2/31 & 1/20');
+});

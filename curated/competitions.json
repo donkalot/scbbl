@@ -1,0 +1,21 @@
+{
+  "note": "Cricsheet <code>_male_json.zip datasets shown on player pages. g = format group (t20, od = one-day, fc = first-class). sc = apply SC points (T20 with 6-ball overs only).",
+  "comps": [
+    {"code": "tests", "name": "Tests", "g": "fc", "intl": true},
+    {"code": "odis", "name": "ODIs", "g": "od", "intl": true},
+    {"code": "t20s", "name": "T20Is", "g": "t20", "intl": true, "sc": true},
+    {"code": "ssh", "name": "Sheffield Shield", "g": "fc"},
+    {"code": "odc", "name": "One-Day Cup", "g": "od"},
+    {"code": "ipl", "name": "IPL", "g": "t20", "sc": true},
+    {"code": "ntb", "name": "T20 Blast", "g": "t20", "sc": true},
+    {"code": "hnd", "name": "The Hundred", "g": "t20"},
+    {"code": "psl", "name": "PSL", "g": "t20", "sc": true},
+    {"code": "cpl", "name": "CPL", "g": "t20", "sc": true},
+    {"code": "bpl", "name": "BPL", "g": "t20", "sc": true},
+    {"code": "sat", "name": "SA20", "g": "t20", "sc": true},
+    {"code": "ilt", "name": "ILT20", "g": "t20", "sc": true},
+    {"code": "mlc", "name": "MLC", "g": "t20", "sc": true},
+    {"code": "lpl", "name": "LPL", "g": "t20", "sc": true},
+    {"code": "ssm", "name": "Super Smash", "g": "t20", "sc": true}
+  ]
+}

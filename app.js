@@ -30,6 +30,10 @@
   function season(s) {
     return seasonCache[s] || (seasonCache[s] = json(`data/matches/${s.replace('/', '-')}.json`));
   }
+  let elsewhereP;
+  const elsewhere = () => elsewhereP || (elsewhereP = json('data/elsewhere.json'));
+  const yearDay = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' });
+  const monthYear = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-AU', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
   function mySquad() {
     try { return JSON.parse(localStorage.getItem(SQUAD_KEY)) || []; } catch { return []; }
@@ -85,7 +89,7 @@
           <option value="all"${st.scope === 'all' ? ' selected' : ''}>Everyone since 2011</option>
         </select>
       </div>
-      <p class="muted">Proj = average SC points over the last two seasons (career if fewer than 3 games). Squads as of ${esc(D.squads.as_of)}.</p>
+      <p class="muted">Proj = average SC points over the last two seasons (career if fewer than 3 games). T20 elsewhere = SC points per game in T20Is and franchise T20 leagues over the last 12 months, scored with the same table (games in brackets; under 5 games sorts last). Squads as of ${esc(D.squads.as_of)}.</p>
       <div class="scroll"><table id="ptable"></table></div>`;
     const latest = seasons[seasons.length - 1];
     const ids = new Set(Object.keys(squadOf));
@@ -97,8 +101,11 @@
       return { pid, n: name(pid), sq: squadOf[pid], last: a ? L.seasonLine(a) : null, a, proj: proj(pid),
                lastTeam: lastSeason && p.s[lastSeason].t, lastSeason };
     });
+    // Fewer than 5 games is too small a sample to rank with everyone else.
+    const elseRank = r => (!r.ew ? -2 : r.ew.m < 5 ? -1 + r.ew.avg / 1e4 : r.ew.avg);
     const sorters = {
       proj: (a, b) => (b.proj ?? -1) - (a.proj ?? -1),
+      else: (a, b) => elseRank(b) - elseRank(a),
       name: (a, b) => a.n.localeCompare(b.n),
       runs: (a, b) => ((b.a && b.a.r) || 0) - ((a.a && a.a.r) || 0),
       wk: (a, b) => ((b.a && b.a.wk) || 0) - ((a.a && a.a.wk) || 0),
@@ -115,12 +122,13 @@
       const shown = list.slice(0, 200);
       const th = (key, label) => `<th${key === 'name' ? ' class="l"' : ''}><a href="#" data-sort="${key}">${label}${st.sort === key ? ' ▾' : ''}</a></th>`;
       document.getElementById('ptable').innerHTML = `
-        <thead><tr><th></th>${th('name', 'Player')}<th class="l">Team</th>${th('proj', 'Proj')}<th>M ${esc(latest)}</th><th>SC avg</th>${th('runs', 'Runs')}<th>SR</th>${th('wk', 'Wkts')}<th>Econ</th></tr></thead>
+        <thead><tr><th></th>${th('name', 'Player')}<th class="l">Team</th>${th('proj', 'Proj')}${th('else', 'T20 elsewhere')}<th>M ${esc(latest)}</th><th>SC avg</th>${th('runs', 'Runs')}<th>SR</th>${th('wk', 'Wkts')}<th>Econ</th></tr></thead>
         <tbody>${shown.map(r => `<tr>
           <td>${squadButton(r.pid)}</td>
           <td class="l name">${link(r.pid)} ${r.sq && r.sq.os ? `<span class="pill os">${esc(r.sq.os)}</span>` : ''}${r.sq && r.sq.new ? ' <span class="pill">new</span>' : ''}</td>
           <td class="l">${r.sq ? team(r.sq.team) : `<span class="muted">${esc(r.lastTeam || '')} ${esc(r.lastSeason || '')}</span>`}</td>
           <td><b>${fix(r.proj)}</b></td>
+          <td>${r.ew ? `${fix(r.ew.avg)} <span class="muted">(${r.ew.m})</span>` : ''}</td>
           <td>${r.a ? r.a.m : ''}</td><td>${r.last ? fix(r.last.avg) : ''}</td>
           <td>${r.a ? r.a.r : ''}</td><td>${r.last ? fix(r.last.sr, 0) : ''}</td>
           <td>${r.a ? r.a.wk : ''}</td><td>${r.last && r.a.lb ? fix(r.last.econ, 2) : ''}</td></tr>`).join('')}
@@ -140,6 +148,13 @@
       render();
     });
     render();
+    elsewhere().then(e => {
+      for (const r of rows) {
+        const y = e.players[r.pid] && e.players[r.pid].y.t20;
+        if (y && y.scm) r.ew = { avg: y.sc / y.scm, m: y.scm };
+      }
+      if (document.getElementById('ptable')) render();
+    });
   }
 
   // ---------- player ----------
@@ -187,7 +202,8 @@
             <td class="l">${games.map(m => `${x.missed.includes(m) ? '<s>' : ''}${esc(when(m.start))} ${m.home === sq.team ? 'v' : '@'} ${team(m.home === sq.team ? m.away : m.home)}${x.missed.includes(m) ? '</s>' : ''}`).join('<br>') || '<span class="muted">Bye</span>'}</td>
             <td class="cell ${x.available === 0 ? 'g0' : x.available >= 2 ? 'g2' : ''}">${x.available}</td></tr>`;
         }).join('')}</tbody></table></div>` : ''}
-      ${p ? `<h3>Seasons</h3><div class="scroll"><table>
+      ${sq ? `<h3>Other competitions</h3><div id="else" class="muted">Loading…</div>` : ''}
+      ${p ? `<h3>BBL seasons</h3><div class="scroll"><table>
         <thead><tr><th class="l">Season</th><th class="l">Team</th><th>M</th><th>SC avg</th><th>SC</th><th>Runs</th><th>Inn</th><th>NO</th><th>HS</th><th>Avg</th><th>SR</th><th>50/100</th><th>Overs</th><th>Wkts</th><th>Econ</th><th>Dots</th><th>Mdn</th><th>Ct</th><th>St</th><th>RO</th></tr></thead>
         <tbody>${playerSeasons.slice().reverse().map(s => {
           const a = p.s[s];
@@ -200,6 +216,7 @@
         <h3>Match log</h3><div id="log" class="muted">Loading matches…</div>
         <h3>By venue</h3><div id="venues" class="muted">Loading…</div>` : ''}`;
 
+    if (sq) renderElsewhere(pid, sq);
     if (!p) return;
     const recentSeasons = playerSeasons.slice(-2);
     async function renderLog(which) {
@@ -232,6 +249,61 @@
         <p class="muted">From the ${which.length === playerSeasons.length ? 'whole career' : `${which.join(' and ')} seasons`}.</p></div>`;
     }
     await renderLog(recentSeasons);
+  }
+
+  const GROUPS = { t20: 'T20', od: 'One-day', fc: 'First-class' };
+
+  async function renderElsewhere(pid, sq) {
+    const e = await elsewhere();
+    const el = document.getElementById('else');
+    if (!el) return;
+    const x = e.players[pid];
+    if (!x) {
+      el.textContent = 'No games found in internationals, the Sheffield Shield, the One-Day Cup or the franchise T20 leagues.';
+      return;
+    }
+    const codes = Object.keys(e.comps).filter(c => x.c[c]);
+    const groups = Object.keys(GROUPS).filter(g => codes.some(c => e.comps[c].g === g));
+    const st = { g: groups.includes('t20') ? 't20' : groups[0], all: false };
+    const cells = (a, sc) => {
+      const v = L.aggLine(a);
+      return `<td>${a.m}</td><td>${sc && a.scm ? `<b>${fix(v.scAvg)}</b>` : ''}</td><td>${a.r}</td><td>${a.inn}</td><td>${a.no}</td><td>${v.hs}</td>
+        <td>${fix(v.batAvg)}</td><td>${fix(v.sr, 0)}</td><td>${a.f50}/${a.h100}</td>
+        <td>${a.lb ? v.overs : ''}</td><td>${a.lb ? a.wk : ''}</td><td>${v.bb}</td><td>${a.lb ? fix(v.bowlAvg) : ''}</td><td>${a.lb ? fix(v.econ, 2) : ''}</td>
+        <td>${a.ct}</td><td>${a.st}</td>`;
+    };
+    function render() {
+      const y = x.y[st.g];
+      const rows = codes.filter(c => e.comps[c].g === st.g).map(c => {
+        const comp = e.comps[c];
+        const seasonKeys = Object.keys(x.c[c]).sort().reverse();
+        const span = seasonKeys.length > 1 ? `${seasonKeys[seasonKeys.length - 1]}–${seasonKeys[0]}` : seasonKeys[0];
+        return `<tr><td class="l"><b>${esc(comp.name)}</b></td><td class="l">${esc(span)}</td>${cells(L.sumAggs(seasonKeys.map(s => x.c[c][s])), comp.sc)}</tr>` +
+          (st.all && seasonKeys.length > 1 ? seasonKeys.map(s => `<tr><td></td><td class="l">${esc(s)}</td>${cells(x.c[c][s], comp.sc)}</tr>`).join('') : '');
+      }).join('');
+      el.className = '';
+      el.innerHTML = `
+        <div class="row" style="margin-bottom:8px">${groups.map(g => `<button data-g="${g}"${g === st.g ? ' class="on"' : ''}>${GROUPS[g]}</button>`).join('')}
+          <button data-all>${st.all ? 'Hide' : 'Show'} seasons</button></div>
+        <div class="scroll"><table class="pin">
+          <thead><tr><th class="l">Competition</th><th class="l">Seasons</th><th>M</th><th>SC avg</th><th>Runs</th><th>Inn</th><th>NO</th><th>HS</th><th>Bat avg</th><th>SR</th><th>50/100</th><th>Overs</th><th>Wkts</th><th>Best</th><th>Bowl avg</th><th>Econ</th><th>Ct</th><th>St</th></tr></thead>
+          <tbody><tr class="gx"><td class="l"><b>Since ${esc(monthYear(e.since))}</b></td><td class="l muted">all ${GROUPS[st.g]}</td>${y ? cells(y, st.g === 't20') : '<td colspan="16" class="l muted">No games</td>'}</tr>${rows}</tbody></table></div>
+        <h3>Last ${x.f.length} games elsewhere</h3>
+        <div class="scroll"><table>
+          <thead><tr><th class="l">Date</th><th class="l">Competition</th><th>Bat</th><th>Bowl</th><th>SC</th><th class="l">Opponent</th></tr></thead>
+          <tbody>${x.f.slice().reverse().map(f => `<tr><td class="l">${esc(yearDay(f.d))}</td><td class="l">${esc(e.comps[f.c].name)}</td>
+            <td>${f.b.length ? esc(L.battingText(f.b)) : '<span class="muted">dnb</span>'}</td><td>${esc(L.bowlingText(f.w))}</td><td>${f.sc != null ? `<b>${f.sc}</b>` : ''}</td>
+            <td class="l">${esc(f.o)}</td></tr>`).join('')}</tbody></table></div>
+        <p class="muted">SC avg here is SC-equivalent: the BBL scoring table applied to T20 games elsewhere. It isn't given for The Hundred (5-ball overs), one-day or first-class cricket.
+          ${sq.cs ? `Matched by name to Cricsheet's ${esc(x.n)}.` : ''}</p>`;
+    }
+    el.addEventListener('click', ev => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      if (b.dataset.g) st.g = b.dataset.g; else st.all = !st.all;
+      render();
+    });
+    render();
   }
 
   // ---------- planner ----------

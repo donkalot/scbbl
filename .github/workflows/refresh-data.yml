@@ -22,6 +22,17 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: ISO week
+        id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      # The other-competition zips (~77 MB) are fetched once per ISO week, not every day.
+      # No restore-keys: a stale cache restored into a new week would be re-saved under the new key.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/elsewhere
+          key: elsewhere-${{ steps.week.outputs.week }}
+
       - name: Download, rebuild, run guards
         run: python -m pipeline.build
 

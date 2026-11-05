@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from . import cricsheet, fixture, guards, register, roles, squads
+from . import cricsheet, elsewhere, fixture, guards, register, roles, squads
 from .common import CURATED, DATA, write_json
 from .scoring import sc_points
 
@@ -56,7 +56,9 @@ def main():
     fx = fixture.build()
     guards.fail_if(fixture.check(fx), 'fixture')
 
-    sq, new_players = squads.build(players)
+    sq, _ = squads.build(players)
+    ew, comp_matches, new_players, problems = elsewhere.build(sq, baseline)
+    guards.fail_if(problems, 'elsewhere')
     avail = json.loads((CURATED / 'availability.json').read_text(encoding='utf-8'))
     notes = json.loads((CURATED / 'notes.json').read_text(encoding='utf-8'))
     unknown = squads.link(avail['links'], sq) + squads.link(notes, sq)
@@ -72,12 +74,13 @@ def main():
     write_json(DATA / 'players.json', players)
     write_json(DATA / 'fixture.json', fx)
     write_json(DATA / 'squads.json', sq)
+    write_json(DATA / 'elsewhere.json', ew)
     write_json(DATA / 'availability.json', avail)
     write_json(DATA / 'notes.json', sorted(notes, key=lambda n: n['date'], reverse=True))
     write_json(DATA / 'rounds.json', json.loads((CURATED / 'rounds.json').read_text()))
     write_json(DATA / 'roles.json', roles.shifts(by_season, team_of, sq['as_of']))
     write_json(idmap_path, dict(sorted(idmap.items())))
-    write_json(guards.BASELINE, guards.ratchet(by_season, players, baseline))
+    write_json(guards.BASELINE, guards.ratchet(by_season, players, baseline, comp_matches))
     write_json(DATA / 'meta.json', {
         'built': datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'seasons': sorted(by_season),
@@ -87,7 +90,9 @@ def main():
     })
     print(f'{len(players)} players, {sum(len(v) for v in by_season.values())} matches, '
           f'{len(fx)} fixtures, {len(idmap)} CA ids linked')
-    print(f'{len(new_players)} squad players with no BBL history: {", ".join(new_players)}')
+    print(f'{sum(comp_matches.values())} matches in other competitions; '
+          f'{len(ew["players"])} squad players have a record there')
+    print(f'{len(new_players)} newcomers not matched to any Cricsheet player: {", ".join(new_players)}')
 
 
 if __name__ == '__main__':

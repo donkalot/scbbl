@@ -19,13 +19,16 @@ def check_history(by_season, players, baseline):
     return problems
 
 
-def ratchet(by_season, players, baseline):
+def ratchet(by_season, players, baseline, comp_matches):
     """Baselines only ever rise, so a source that shrinks is caught on the next run."""
-    seasons = dict(baseline.get('season_matches', {}))
-    for season, ms in by_season.items():
-        seasons[season] = max(seasons.get(season, 0), len(ms))
-    return {'season_matches': dict(sorted(seasons.items())),
-            'players': max(baseline.get('players', 0), len(players))}
+    def up(old, new):
+        merged = dict(old)
+        for k, n in new.items():
+            merged[k] = max(merged.get(k, 0), n)
+        return dict(sorted(merged.items()))
+    return {'season_matches': up(baseline.get('season_matches', {}), {s: len(ms) for s, ms in by_season.items()}),
+            'players': max(baseline.get('players', 0), len(players)),
+            'comp_matches': up(baseline.get('comp_matches', {}), comp_matches)}
 
 
 def load_baseline():
