@@ -322,13 +322,14 @@
         <tbody>${L.TEAMS.map(t => `<tr><td class="l">${team(t)}</td>${leagueRounds.map(r => {
           const g = grid[t][r.round];
           const opp = g.map(m => `${m.home === t ? 'v' : '@'} ${m.home === t ? m.away : m.home} ${day(L.localDate(m.start))}`).join('\n');
-          return `<td class="cell ${cls(g.length)}" title="${esc(opp || 'Bye')}">${g.length}</td>`;
+          return `<td class="cell ${cls(g.length)}" data-t="${t}" data-r="${r.round}" title="${esc(opp || 'Bye')}">${g.length}</td>`;
         }).join('')}<td>${leagueRounds.reduce((s, r) => s + grid[t][r.round].length, 0)}</td></tr>`).join('')}</tbody>
       </table></div>
-      <p class="muted">Green = double, dark green = triple, red = bye. Hover a cell for opponents, or tap a round heading for its matches.</p>
+      <p class="muted">Green = double, dark green = triple, red = bye. A blue dot is a game with rain forecast (light = Med, dark = High, hollow = early forecast).
+        Hover a cell for opponents and rain, or tap a round heading for its matches.</p>
       ${selRound ? `<div class="card"><b>Round ${selRound.round}</b> · ${day(selRound.start)} – ${day(selRound.end)}
-        <div class="scroll"><table><tbody>${D.fixture.filter(m => m.stage === 'league' && L.roundOf(L.localDate(m.start), leagueRounds) === selRound).map(m => `
-          <tr><td class="l">${esc(when(m.start))}</td><td class="l">${team(m.home)} v ${team(m.away)}</td><td class="l muted">${esc(m.venue ? `${m.venue.name}, ${m.venue.city}` : 'TBC')}</td></tr>`).join('')}
+        <div class="scroll"><table id="rtable"><tbody>${D.fixture.filter(m => m.stage === 'league' && L.roundOf(L.localDate(m.start), leagueRounds) === selRound).map(m => `
+          <tr data-id="${m.id}"><td class="l">${esc(when(m.start))}</td><td class="l"><a href="#/match/${m.id}">${team(m.home)} v ${team(m.away)}</a></td><td class="l muted">${esc(m.venue ? `${m.venue.name}, ${m.venue.city}` : 'TBC')}</td><td class="l rain"></td></tr>`).join('')}
         </tbody></table></div></div>` : ''}
       <h2 style="margin-top:24px">My squad</h2>
       ${entries.length ? `<div class="scroll"><table>
@@ -339,15 +340,58 @@
             const x = e.rounds[r.round];
             if (!x) return '<td class="cell g0">0</td>';
             const missed = x.missed.length ? `Unavailable for ${x.missed.length} of ${x.games}` : '';
-            return `<td class="cell ${x.missed.length ? 'gx' : cls(x.available)}" title="${esc(missed)}">${x.available}${x.missed.length ? `/${x.games}` : ''}</td>`;
+            return `<td class="cell ${x.missed.length ? 'gx' : cls(x.available)}" data-pid="${esc(e.pid)}" data-r="${r.round}" title="${esc(missed)}">${x.available}${x.missed.length ? `/${x.games}` : ''}</td>`;
           }).join('')}
           <td>${Object.values(e.rounds).reduce((s, x) => s + x.available, 0)}</td></tr>`).join('')}</tbody>
         <tfoot>
           <tr><th class="l" colspan="4">Players with a game</th>${leagueRounds.map(r => `<th>${entries.filter(e => e.rounds[r.round] && e.rounds[r.round].available).length}</th>`).join('')}<th></th></tr>
+          <tr id="atrisk"><th class="l" colspan="4" title="Games your players are available for that have Med or High rain forecast">Games at rain risk</th>${leagueRounds.map(r => `<td data-r="${r.round}"></td>`).join('')}<td></td></tr>
           <tr><th class="l" colspan="4">Captain options (proj × games)</th>${leagueRounds.map(r => `<td class="l" style="font-size:.8rem;white-space:normal;min-width:110px">${L.captainPicks(entries, r.round).map(c => `${esc(name(c.pid))} <span class="muted">${fix(c.value, 0)}</span>`).join('<br>') || '–'}</td>`).join('')}<td></td></tr>
         </tfoot></table></div>
         <p class="muted">A cell like 1/2 means the player misses one of two games for a listed clash. Proj is the last-two-seasons SC average.</p>`
       : `<div class="card">Your squad is empty. Add players with the <b>+</b> button on the <a href="#/players">Players</a> tab. It's saved on this device only.</div>`}`;
+    plannerRain(entries, selRound);
+  }
+
+  // Forecast rain only: the 10-year history is a ground's long-run average, not a reason to trade.
+  async function plannerRain(entries, selRound) {
+    const token = view;
+    const live = m => m.venue && Date.parse(m.end) > Date.now();
+    const soon = D.fixture.filter(m => m.stage === 'league' && live(m) && Date.parse(m.start) - Date.now() < FORECAST_DAYS * 864e5);
+    const shown = selRound ? D.fixture.filter(m => m.stage === 'league' && live(m) && roundOfMatch(m) && roundOfMatch(m).round === selRound.round) : [];
+    const rain = {};
+    await Promise.all([...new Set([...soon, ...shown])].map(m => rainFor(m).then(r => { rain[m.id] = r; })));
+    if (token !== view) return;
+
+    for (const m of shown) {
+      const el = document.querySelector(`#rtable tr[data-id="${m.id}"] .rain`);
+      if (el) el.innerHTML = rainPill(rain[m.id]);
+    }
+    const wet = m => { const r = rain[m.id]; return r && r.kind === 'forecast' && r.level !== 'Low' ? r : null; };
+    const inRange = new Set(soon.map(m => roundOfMatch(m) && roundOfMatch(m).round));
+    const mark = (el, games) => {
+      const hits = games.filter(wet);
+      if (!el || !hits.length) return;
+      const worst = hits.some(m => wet(m).level === 'High') ? 'High' : 'Med';
+      const early = hits.every(m => wet(m).early);
+      el.insertAdjacentHTML('beforeend', `<i class="wet ${worst}${early ? ' early' : ''}"></i>`);
+      el.title = [el.title, ...hits.map(m => `${m.home} v ${m.away} ${shortDay(L.localDate(m.start))}: rain ${wet(m).level}, ${wet(m).maxP}% · ${fix(wet(m).mm)} mm${wet(m).early ? ' (early forecast)' : ''}`)].filter(Boolean).join('\n');
+    };
+    for (const t of L.TEAMS) for (const r of leagueRounds) mark(document.querySelector(`td[data-t="${t}"][data-r="${r.round}"]`), grid[t][r.round]);
+    for (const r of leagueRounds) {
+      let high = 0, med = 0;
+      for (const e of entries) {
+        const x = e.rounds[r.round];
+        if (!x || !e.team) continue;
+        const games = grid[e.team][r.round].filter(m => !x.missed.includes(m));
+        mark(document.querySelector(`td[data-pid="${CSS.escape(e.pid)}"][data-r="${r.round}"]`), games);
+        for (const m of games) { const w = wet(m); if (w) w.level === 'High' ? high++ : med++; }
+      }
+      const el = document.querySelector(`#atrisk td[data-r="${r.round}"]`);
+      if (el && inRange.has(r.round)) {
+        el.innerHTML = high + med ? [high && `<span class="pill no">${high} High</span>`, med && `<span class="pill warn">${med} Med</span>`].filter(Boolean).join(' ') : '<span class="muted">0</span>';
+      }
+    }
   }
 
   // ---------- availability ----------
@@ -410,6 +454,8 @@
   const CA = 'https://apiv2.cricket.com.au/web/views/scorecard?jsconfig=eccn%3Atrue&format=json&fixtureId=';
   const FORECAST = 'https://api.open-meteo.com/v1/forecast?hourly=precipitation_probability,precipitation&timezone=GMT&forecast_days=16';
   const FORECAST_DAYS = 15;
+  // Rain forecasts lose most of their skill after about a week.
+  const EARLY_DAYS = 7;
   const CAPTAIN_KEY = 'scbbl-captain';
   const lazy = f => { let p; return () => p || (p = json(`data/${f}.json`)); };
   const climate = lazy('climate'), scoring = lazy('scoring'), idmap = lazy('idmap');
@@ -434,7 +480,8 @@
     if (Date.parse(m.start) - Date.now() < FORECAST_DAYS * 864e5) {
       const f = await forecast(m.venue);
       const hours = f && L.windowHours(m.start, m.end).map(h => f[h] && { h, ...f[h] });
-      if (hours && hours.every(Boolean)) return { kind: 'forecast', hours, ...L.rainRisk(hours) };
+      const early = Date.parse(m.start) - Date.now() > EARLY_DAYS * 864e5;
+      if (hours && hours.every(Boolean)) return { kind: 'forecast', early, hours, ...L.rainRisk(hours) };
     }
     const c = L.climateRisk((await climate())[m.id]);
     return c && { kind: 'climate', ...c };
@@ -444,9 +491,9 @@
   function rainPill(r) {
     if (!r) return '';
     const [txt, title] = r.kind === 'forecast'
-      ? [`${r.maxP}% · ${fix(r.mm)} mm`, 'Open-Meteo forecast over the match window: highest hourly chance of rain, and total rain']
+      ? [`${r.maxP}% · ${fix(r.mm)} mm${r.early ? ' · early' : ''}`, `Open-Meteo forecast over the match window: highest hourly chance of rain, and total rain.${r.early ? ` More than ${EARLY_DAYS} days out, so it may well change.` : ''}`]
       : [`${Math.round(100 * r.wet)}% hist.`, 'Share of the same window over the past 10 years (±3 days) with at least 1 mm of rain'];
-    return `<span class="pill ${RAIN_CLS[r.level]}" title="${title}">Rain ${r.level}</span> <span class="muted">${txt}</span>`;
+    return `<span class="pill ${RAIN_CLS[r.level]}${r.early ? ' early' : ''}" title="${title}">Rain ${r.level}</span> <span class="muted">${txt}</span>`;
   }
 
   // cricket.com.au caches the scorecard for 30 s, so there's no point asking more often.
@@ -493,7 +540,7 @@
     $app.innerHTML = `
       <h2>Matches</h2>
       <div class="row" style="margin-bottom:10px"><a href="#/matches${all ? '' : '?all=1'}"><button class="${all ? 'on' : ''}">Show completed</button></a></div>
-      <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match. Before that it's how often the same window has been wet over the past 10 years. Tap a match for team sheets and live SC points.</p>
+      <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match, marked early beyond ${EARLY_DAYS} days because it often changes. Before that it's how often the same window has been wet over the past 10 years. Tap a match for team sheets and live SC points.</p>
       <div class="scroll"><table id="mtable">
         <thead><tr><th class="l">When (AEDT)</th><th class="l">Round</th><th class="l">Match</th><th class="l">Venue</th><th class="l">Rain</th><th class="l">Score</th></tr></thead>
         <tbody>${list.map(m => `<tr data-id="${m.id}">

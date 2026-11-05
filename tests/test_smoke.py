@@ -1,6 +1,7 @@
 """End-to-end smoke test: serve the repo root and drive every tab in headless Chromium."""
 import http.server
 import json
+import re
 import pathlib
 import socketserver
 import threading
@@ -138,7 +139,8 @@ def _mock_feeds(page, rain_at=None):
 
     def meteo(route):
         times = [f'2027-01-{d:02d}T{h:02d}:00' for d in range(7, 23) for h in range(24)]
-        p = [70 if t == rain_at else 5 for t in times]
+        wet = {rain_at} if isinstance(rain_at, str) else set(rain_at or ())
+        p = [70 if t in wet else 5 for t in times]
         route.fulfill(body=json.dumps({'hourly': {'time': times, 'precipitation_probability': p,
                                                   'precipitation': [0.0] * len(times)}}),
                       content_type='application/json', headers={'access-control-allow-origin': '*'})
@@ -174,6 +176,30 @@ def test_match_page_scores_the_replayed_scorecard(server, page):
     expect(row.locator('td.sc')).to_have_text('364 ×2')
     expect(page.locator('#mtotal')).to_have_text('364')
     expect(page.locator('#rtotal')).to_have_text('364')
+
+
+def test_planner_marks_forecast_rain_for_teams_and_my_squad(server, page):
+    page.clock.set_fixed_time('2027-01-07T00:00:00Z')
+    # HEA v SCO is a day out; HEA v THU on 17 Jan is 10 days out, so its forecast is early.
+    _mock_feeds(page, rain_at=('2027-01-08T10:00', '2027-01-17T09:00'))
+    page.add_init_script(f"localStorage.setItem('scbbl-squad', JSON.stringify(['{_squad_pid('HEA', 'Jack Wildermuth')}']))")
+    rounds = json.loads((ROOT / 'data' / 'rounds.json').read_text())['rounds']
+    rnd = lambda d: next(r['round'] for r in rounds if r['start'] <= d <= r['end'])
+    near, far = rnd('2027-01-08'), rnd('2027-01-17')
+    page.goto(server + f'#/planner?r={near}')
+    expect(page.locator(f'#rtable tr[data-id="{HEA_V_SCO}"] .rain .pill')).to_have_text('Rain High')
+    expect(page.locator('#rtable .rain .pill').first).to_be_visible()
+    expect(page.locator(f'td[data-t="HEA"][data-r="{near}"] i.wet.High:not(.early)')).to_have_count(1)
+    expect(page.locator(f'td[data-t="SCO"][data-r="{near}"] i.wet.High')).to_have_count(1)
+    expect(page.locator(f'td[data-t="HEA"][data-r="{far}"] i.wet.High.early')).to_have_count(1)
+    expect(page.locator(f'td[data-t="REN"][data-r="{near}"] i.wet')).to_have_count(0)
+    mine = page.locator(f'td[data-pid][data-r="{near}"]')
+    expect(mine.locator('i.wet.High')).to_have_count(1)
+    expect(mine).to_have_attribute('title', re.compile(r'HEA v SCO 8 Jan: rain High, 70%'))
+    expect(page.locator(f'#atrisk td[data-r="{near}"]')).to_have_text('1 High')
+    expect(page.locator(f'#atrisk td[data-r="{far}"]')).to_have_text('1 High')
+    # Rounds beyond the forecast stay blank rather than claiming 0.
+    expect(page.locator(f'#atrisk td[data-r="{near - 1}"]')).to_have_text('')
 
 
 def test_match_page_before_the_toss_shows_squads(server, page):
