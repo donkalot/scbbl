@@ -50,6 +50,17 @@
     localStorage.setItem(SQUAD_KEY, JSON.stringify(s));
     return i < 0;
   }
+  const TRADES_KEY = 'scbbl-trades', FIELD_KEY = 'scbbl-field';
+  function tradeBook() {
+    try {
+      const b = JSON.parse(localStorage.getItem(TRADES_KEY));
+      return { trades: (b && b.trades) || [], boosts: (b && b.boosts) || [] };
+    } catch { return { trades: [], boosts: [] }; }
+  }
+  const saveTradeBook = b => localStorage.setItem(TRADES_KEY, JSON.stringify(b));
+  function fieldPins() {
+    try { return JSON.parse(localStorage.getItem(FIELD_KEY)) || {}; } catch { return {}; }
+  }
   function squadButton(pid) {
     const inSquad = mySquad().includes(pid);
     return `<button class="sq${inSquad ? ' in' : ''}" data-squad="${esc(pid)}" title="${inSquad ? 'Remove from' : 'Add to'} my squad">${inSquad ? '✓' : '+'}</button>`;
@@ -441,8 +452,11 @@
     const open = fit.slots.filter(s => !s.pid);
     const pool = Object.keys(D.sc.players).filter(pid => !mine.includes(pid)).map(seat);
     const cheapest = Math.min(...pool.map(p => p.price));
-    const today = L.localDate(new Date().toISOString());
-    const next = leagueRounds.find(r => r.end >= today) || leagueRounds[leagueRounds.length - 1];
+    const now = Date.now();
+    const next = leagueRounds.find(r => r.round === L.tradeRound(D.fixture, leagueRounds, now)) || leagueRounds[leagueRounds.length - 1];
+    const locked = now >= Date.parse(rules.lockout);
+    const book = tradeBook();
+    const ts = L.tradeStatus(book, rules, next.round);
     const games = pid => {
       const r = rounds16(pid);
       const n = x => (r[x.round] ? r[x.round].available : 0);
@@ -470,14 +484,16 @@
       opts.sort((a, b) => keys[sort](b) - keys[sort](a));
       const outProj = out ? proj(out) : null;
       const qs = out ? `out=${encodeURIComponent(out)}` : `pick=${pick}`;
+      const noTrade = out && locked && !ts.roundLeft;
       picker = `<div class="card" id="picker">
         <b>${out ? `Trade out ${esc(name(out))}` : `Fill the open ${pick} seat`}</b>
         <span class="muted">· up to ${price(budget)}${out ? '' : open.length > 1 ? `, keeping ${price(cheapest)} for each of the other ${open.length - 1} open seats` : ''} · <a href="#/team">close</a></span>
+        ${noTrade ? `<div class="banner" id="notrade">No trades left ${ts.left ? `in round ${next.round}` : 'this season'}. Undo a trade from this round to free one.</div>` : ''}
         <div class="row" style="margin:8px 0">Sort: ${[['proj', 'Proj'], ['total', 'Proj × games left'], ['cheap', 'Cheapest']].map(([k, t]) =>
           `<a href="#/team?${qs}&sort=${k}"${k === sort ? ' style="font-weight:700"' : ''}>${t}</a>`).join(' · ')}</div>
         ${opts.length ? `<div class="scroll"><table id="opts">
           <thead><tr><th></th><th class="l">Player</th><th class="l">Team</th><th class="l">Pos</th><th>Price</th><th>Proj</th>${out ? '<th>Gain</th>' : ''}<th>R${next.round}</th><th>Games left</th></tr></thead>
-          <tbody>${opts.slice(0, 20).map(p => `<tr><td><button data-in="${esc(p.pid)}"${out ? ` data-out="${esc(out)}"` : ''}>${out ? 'Swap' : 'Add'}</button></td>
+          <tbody>${opts.slice(0, 20).map(p => `<tr><td><button data-in="${esc(p.pid)}"${out ? ` data-out="${esc(out)}"` : ''}${noTrade ? ' disabled' : ''}>${out ? 'Swap' : 'Add'}</button></td>
             <td class="l name">${link(p.pid)}${inj(p.pid)}</td><td class="l">${team(squadOf[p.pid] && squadOf[p.pid].team)}</td><td class="l">${posText(p.pid)}</td>
             <td>${price(p.price)}</td><td>${fix(p.proj)}</td>${out ? `<td>${p.proj != null && outProj != null ? (p.proj >= outProj ? '+' : '') + fix(p.proj - outProj) : '–'}</td>` : ''}
             <td>${p.g.next}</td><td>${p.g.rest}</td></tr>`).join('')}</tbody></table></div>`
@@ -501,6 +517,72 @@
         <td class="l"><a href="#/team?out=${encodeURIComponent(pid)}">Trade</a> ${squadButton(pid).replace('<button', '<button data-rerender="1"')}</td></tr>`;
     };
 
+    const roundsLeft = leagueRounds.filter(r => r.round >= next.round).length;
+    const trades = `<div class="card" id="trades"><b>Trades</b>
+      ${!locked ? `<p class="muted" style="margin:6px 0 0">Changes are free until the first lockout, ${esc(when(rules.lockout))}. After that, each Swap here counts as a trade: ${rules.trades_round} a round and ${rules.trades_total} for the season.</p>` : `
+        <div class="stats">
+          <div class="stat"><span class="muted">Round ${next.round}</span><b id="tround">${ts.inRound}/${ts.roundMax}</b></div>
+          <div class="stat"><span class="muted">Season</span><b id="tseason">${ts.used}/${rules.trades_total}</b></div>
+          <div class="stat"><span class="muted">Average left per round</span><b>${roundsLeft ? fix(ts.left / roundsLeft) : '–'}</b></div>
+          <div class="stat"><span class="muted">Boosts left</span><b id="tboosts">${ts.boostsLeft}/${rules.boosts}</b></div>
+        </div>
+        <div style="margin:8px 0">${ts.boosted ? (ts.inRound <= rules.trades_round ? `<button data-boost="off">Cancel the boost in round ${next.round}</button>` : `<span class="muted">Boost used in round ${next.round}.</span>`)
+          : ts.boostsLeft > 0 ? `<button data-boost="on">Use a boost in round ${next.round} (+1 trade)</button>` : ''}</div>
+        ${book.trades.length ? `<div class="scroll"><table id="tlog"><tbody>${book.trades.map((t, i) => ({ ...t, i })).reverse().map(t => `<tr>
+          <td class="l">R${t.round}</td><td class="l">${link(t.out)} → ${link(t.in)}</td>
+          <td class="l">${t.round === next.round ? `<button data-undo="${t.i}" title="Swap back and get the trade back">Undo</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        <p class="muted" style="margin:6px 0 0">Counts Swaps made here since the lockout, against the round still being played (now round ${next.round}). Undo works until that round ends. A boost is assumed to add one trade to a round and still count towards the ${rules.trades_total}. Adding or removing players with ✓ and + isn't counted.</p>`}
+    </div>`;
+
+    const fr = leagueRounds.find(r => r.round === Number(params.get('field'))) || next;
+    const rk = String(fr.round);
+    const pins = fieldPins()[rk] || {};
+    const roundOf16 = pid => rounds16(pid)[fr.round] || { games: 0, available: 0, missed: [] };
+    const sidePlayers = squad.map(p => ({ pid: p.pid, pos: p.pos, value: (proj(p.pid) ?? 0) * roundOf16(p.pid).available }));
+    const side = L.bestField(sidePlayers, rules.positions, rules.emergencies, pins);
+    const onField = side.seats.filter(s => s.pid).map(s => s.pid);
+    const val = pid => sidePlayers.find(p => p.pid === pid).value;
+    const myCap = captains()[rk];
+    const capt = onField.includes(myCap) ? myCap : side.captain;
+    const vice = onField.filter(pid => pid !== capt && val(pid) > 0).sort((a, b) => val(b) - val(a))[0];
+    const emOf = Object.fromEntries(side.emergencies.map(s => [s.pid, s.pos]));
+    const score = L.fieldScore(onField.map(val), rules.scoring || rules.active, capt ? val(capt) : 0);
+    const gamesCell = pid => {
+      const x = roundOf16(pid);
+      return `<td${x.missed.length ? ` title="Unavailable for ${x.missed.length} of ${x.games}"` : ''}>${x.available}${x.missed.length ? `/${x.games}` : ''}</td>`;
+    };
+    const pinButton = (pid, onF) => pins[pid]
+      ? `<span class="pill">${pins[pid] === 'in' ? 'kept on' : 'kept off'}</span> <button data-pin="${esc(pid)}" data-to="">Auto</button>`
+      : `<button data-pin="${esc(pid)}" data-to="${onF ? 'out' : 'in'}">${onF ? 'Bench' : 'Play'}</button>`;
+    const fieldRow = s => {
+      if (!s.pid) return `<tr class="open"><td class="l"><b>${s.pos}</b></td><td class="l muted" colspan="7">Nobody left for this seat</td></tr>`;
+      const pid = s.pid;
+      return `<tr><td class="l"><b>${s.pos}</b></td><td class="l name">${link(pid)}${inj(pid)}${pid === capt ? ' <span class="pill">C</span>' : pid === vice ? ' <span class="pill">VC</span>' : ''}</td>
+        <td class="l">${team(squadOf[pid] && squadOf[pid].team)}</td>${gamesCell(pid)}<td>${fix(proj(pid))}</td><td><b>${fix(val(pid), 0)}</b></td>
+        <td><button class="cap${myCap === pid ? ' on' : ''}" data-cap="${esc(pid)}" title="${myCap === pid ? 'Remove as' : 'Make'} my captain for round ${fr.round} (double points)">C</button></td>
+        <td class="l">${pinButton(pid, true)}</td></tr>`;
+    };
+    const field = !squad.length ? '' : `
+      <h2 style="margin-top:24px">On field</h2>
+      <div class="row" id="fround">${leagueRounds.map(r => `<a href="#/team?field=${r.round}"${r === fr ? ' style="font-weight:700"' : ''}>R${r.round}</a>`).join(' · ')}</div>
+      <div class="stats">
+        <div class="stat"><span class="muted">Round ${fr.round} projection</span><b id="fscore">${fix(score, 0)}</b></div>
+        <div class="stat"><span class="muted">Playing</span><b>${onField.filter(pid => val(pid) > 0).length}/${rules.active}</b></div>
+      </div>
+      ${side.unseated.length ? `<div class="banner">No on-field seat left for ${side.unseated.map(name).map(esc).join(', ')}, kept on by you.</div>` : ''}
+      <div class="scroll"><table id="field">
+        <thead><tr><th class="l">Seat</th><th class="l">Player</th><th class="l">Team</th><th>Games</th><th>Proj</th><th>Exp</th><th></th><th></th></tr></thead>
+        <tbody>${side.seats.map(fieldRow).join('')}</tbody></table></div>
+      ${side.bench.length ? `<h3>Bench</h3><div class="scroll"><table id="bench">
+        <thead><tr><th class="l">Player</th><th class="l">Team</th><th class="l">Pos</th><th>Games</th><th>Proj</th><th>Exp</th><th></th></tr></thead>
+        <tbody>${side.bench.map(p => `<tr><td class="l name">${link(p.pid)}${inj(p.pid)}${emOf[p.pid] ? ` <span class="pill" title="Emergency: comes on if your on-field ${emOf[p.pid]} doesn't play">E ${emOf[p.pid]}</span>` : ''}</td>
+          <td class="l">${team(squadOf[p.pid] && squadOf[p.pid].team)}</td><td class="l">${posText(p.pid)}</td>${gamesCell(p.pid)}<td>${fix(proj(p.pid))}</td><td>${fix(p.value, 0)}</td>
+          <td class="l">${pinButton(p.pid, false)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      <p class="muted">Exp is Proj × games in round ${fr.round}, after listed clashes, so doubles count twice. The side fields the highest Exp that fits ${Object.entries(rules.positions).map(([p, r]) => `${r.active} ${p}`).join(', ')}.
+        Only your best ${rules.scoring || rules.active} on-field scores count, plus your captain's again, and the projection adds them up the same way.
+        Emergencies (E) are the best bench player with a game for each position, at most ${rules.emergencies}. A player with no BBL history has no Proj, so keep them on by hand.
+        The captain button is the same one as on the match page.</p>`;
+
     $app.innerHTML = `
       <h2>Team</h2>
       ${scNote()}
@@ -511,6 +593,7 @@
         <div class="stat"><span class="muted">Per open seat</span><b>${open.length ? price(left / open.length) : '–'}</b></div>
       </div>
       ${problems.length ? `<div class="banner" id="problems">${problems.map(esc).join('<br>')}</div>` : ''}
+      ${trades}
       ${picker}
       <div class="scroll"><table id="team">
         <thead><tr><th class="l">Seat</th><th class="l">Player</th><th class="l">Team</th><th class="l">Pos</th><th>Price</th><th>Proj</th><th>R${next.round}</th><th>Games left</th><th></th></tr></thead>
@@ -518,16 +601,46 @@
       </table></div>
       <p class="muted">SuperCoach squads are ${rules.squad} players under ${price(rules.cap)}: ${Object.entries(rules.positions).map(([p, r]) => `${r.squad} ${p}`).join(', ')}, where FLX can be anyone.
         A dual-position player sits wherever leaves room for the rest. Games are from round ${next.round} on, after listed clashes. Proj is the last-two-seasons SC average.
-        This uses the same squad as the Players and Planner tabs, saved on this device only.</p>`;
+        This uses the same squad as the Players and Planner tabs, saved on this device only.</p>
+      ${field}`;
 
+    const saveSquad = s => localStorage.setItem(SQUAD_KEY, JSON.stringify(s));
     $app.onclick = e => {
-      const b = e.target.closest('[data-in]');
-      if (!b) return;
-      const s = mySquad();
-      const i = b.dataset.out ? s.indexOf(b.dataset.out) : -1;
-      if (i >= 0) s[i] = b.dataset.in; else s.push(b.dataset.in);
-      localStorage.setItem(SQUAD_KEY, JSON.stringify(s));
-      if (location.hash === '#/team') route(); else go('#/team');
+      const b = e.target.closest('[data-in],[data-undo],[data-boost],[data-pin],[data-cap]');
+      if (!b || b.disabled) return;
+      const d = b.dataset;
+      if (d.in) {
+        const s = mySquad();
+        const i = d.out ? s.indexOf(d.out) : -1;
+        if (i >= 0) s[i] = d.in; else s.push(d.in);
+        saveSquad(s);
+        if (i >= 0 && Date.now() >= Date.parse(rules.lockout)) {
+          book.trades.push({ round: next.round, out: d.out, in: d.in, at: new Date().toISOString() });
+          saveTradeBook(book);
+        }
+        if (location.hash === '#/team') route(); else go('#/team');
+        return;
+      }
+      if (d.undo) {
+        const [t] = book.trades.splice(Number(d.undo), 1);
+        const s = mySquad();
+        if (s.includes(t.in) && !s.includes(t.out)) { s[s.indexOf(t.in)] = t.out; saveSquad(s); }
+        saveTradeBook(book);
+      } else if (d.boost) {
+        book.boosts = d.boost === 'on' ? [...book.boosts, next.round] : book.boosts.filter(r => r !== next.round);
+        saveTradeBook(book);
+      } else if (d.pin) {
+        const all = fieldPins();
+        const p = all[rk] || {};
+        if (d.to) p[d.pin] = d.to; else delete p[d.pin];
+        all[rk] = p;
+        localStorage.setItem(FIELD_KEY, JSON.stringify(all));
+      } else if (d.cap) {
+        const caps = captains();
+        if (caps[rk] === d.cap) delete caps[rk]; else caps[rk] = d.cap;
+        localStorage.setItem(CAPTAIN_KEY, JSON.stringify(caps));
+      }
+      route();
     };
   }
 

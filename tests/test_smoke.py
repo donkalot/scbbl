@@ -192,6 +192,81 @@ def test_team_trade_swaps_within_the_money_left(server, page):
     expect(page.locator('.stat').first).to_contain_text('1/17')
 
 
+def _full_squad():
+    sc = _sc_players()
+    only = lambda *pos: [pid for pid, p in sc.items() if p['pos'] == list(pos)]
+    return only('WKP', 'BAT')[:2] + only('BAT')[:8] + only('BWL')[:7]
+
+
+def test_team_on_field_picks_twelve_with_emergencies_and_pins(server, page):
+    _seed(page, _full_squad())
+    page.goto(server + '#/team?field=2')
+    field, bench = page.locator('#field tbody tr'), page.locator('#bench tbody tr')
+    expect(field).to_have_count(12)
+    expect(bench).to_have_count(5)
+    expect(field.locator('td:first-child')).to_have_text(['WKP'] + ['BAT'] * 5 + ['BWL'] * 5 + ['FLX'])
+    expect(page.locator('#fround a[style]')).to_have_text('R2')
+    ems = bench.locator('.pill', has_text='E ')
+    assert 1 <= ems.count() <= 3
+    expect(field.locator('.pill', has_text=re.compile(r'^C$'))).to_have_count(1)
+
+    first = field.nth(1).locator('td.name a').inner_text()
+    field.nth(1).locator('button[data-pin]').click()
+    expect(bench.filter(has_text=first)).to_contain_text('kept off')
+    expect(field.filter(has_text=first)).to_have_count(0)
+    bench.filter(has_text=first).locator('button', has_text='Auto').click()
+    expect(field.filter(has_text=first)).to_have_count(1)
+
+    capt = field.nth(5).locator('td.name a').inner_text()
+    field.nth(5).locator('button[data-cap]').click()
+    expect(field.filter(has_text=capt).locator('.pill', has_text=re.compile(r'^C$'))).to_have_count(1)
+    assert json.loads(page.evaluate("localStorage.getItem('scbbl-captain')")) == {'2': _squad_pid_by_name(capt)}
+
+
+def _squad_pid_by_name(name):
+    sq = json.loads((ROOT / 'data' / 'squads.json').read_text(encoding='utf-8'))
+    return next(r['pid'] for rs in sq['teams'].values() for r in rs if r['n'] == name)
+
+
+def test_trades_are_free_before_the_lockout(server, page):
+    marsh = _squad_pid('SCO', 'Mitchell Marsh')
+    _seed(page, [marsh])
+    page.goto(server + '#/team?out=' + marsh)
+    expect(page.locator('#trades')).to_contain_text('Changes are free until the first lockout')
+    page.locator('#opts button[data-in]').first.click()
+    assert page.evaluate("localStorage.getItem('scbbl-trades')") is None
+
+
+def test_trades_count_after_the_lockout_with_undo_boost_and_limit(server, page):
+    from datetime import datetime, timezone
+    page.clock.set_fixed_time(datetime(2026, 12, 21, 0, 0, tzinfo=timezone.utc))  # round 2
+    marsh = _squad_pid('SCO', 'Mitchell Marsh')
+    _seed(page, [marsh])
+    page.goto(server + '#/team?out=' + marsh)
+    expect(page.locator('#tround')).to_have_text('0/3')
+    page.locator('#opts button[data-in]').first.click()
+    expect(page.locator('#tround')).to_have_text('1/3')
+    expect(page.locator('#tseason')).to_have_text('1/26')
+    expect(page.locator('#tlog tbody tr')).to_have_count(1)
+    expect(page.locator('#tlog tbody tr').first).to_contain_text('R2')
+
+    page.click('#tlog button:has-text("Undo")')
+    expect(page.locator('#tround')).to_have_text('0/3')
+    expect(page.locator('#team tbody tr', has_text='Mitchell Marsh')).to_have_count(1)
+
+    page.click('#trades button[data-boost="on"]')
+    expect(page.locator('#tround')).to_have_text('0/4')
+    expect(page.locator('#tboosts')).to_have_text('1/2')
+    page.click('#trades button[data-boost="off"]')
+    expect(page.locator('#tboosts')).to_have_text('2/2')
+
+    full = [{'round': 2, 'out': 'a', 'in': 'b'}] * 3
+    page.evaluate(f"localStorage.setItem('scbbl-trades', JSON.stringify({{trades: {json.dumps(full)}, boosts: []}}))")
+    page.goto(server + '#/team?out=' + marsh)
+    expect(page.locator('#notrade')).to_contain_text('No trades left in round 2')
+    expect(page.locator('#opts button[data-in]').first).to_be_disabled()
+
+
 def test_availability_lists_ruled_out_player(server, page):
     page.goto(server + '#/availability')
     expect(page.locator('#app table tbody tr', has_text='Jason Behrendorff')).to_have_count(1)

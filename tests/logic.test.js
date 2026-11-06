@@ -84,6 +84,56 @@ test('fitting keeps affordable players who leave everyone a seat', () => {
   assert.deepEqual(L.fitting(squad, pool, POSITIONS, 200).map(p => p.pid), ['b2', 'y']);
 });
 
+const FIELD = { WKP: { active: 1 }, BAT: { active: 2 }, BWL: { active: 1 }, FLX: { active: 1 } };
+const V = (pid, value, ...pos) => ({ pid, pos, value });
+const SIDE = [V('w1', 50, 'WKP'), V('w2', 40, 'WKP'), V('wb', 60, 'WKP', 'BAT'), V('b1', 30, 'BAT'), V('b2', 20, 'BAT'),
+  V('k1', 70, 'BWL'), V('k2', 10, 'BWL'), V('k3', 0, 'BWL')];
+const pids = xs => xs.map(x => x.pid).filter(Boolean).sort();
+
+test('bestField seats the highest values, moving a dual-position player, and picks emergencies from the bench', () => {
+  const f = L.bestField(SIDE, FIELD, 3);
+  assert.deepEqual(pids(f.seats), ['b1', 'k1', 'w1', 'w2', 'wb']);
+  for (const s of f.seats) if (s.pos !== 'FLX') assert.ok(SIDE.find(p => p.pid === s.pid).pos.includes(s.pos));
+  assert.deepEqual(f.bench.map(p => p.pid), ['b2', 'k2', 'k3']);
+  // k3 has no game, and no bench player can cover WKP.
+  assert.deepEqual(f.emergencies.map(s => [s.pos, s.pid]), [['BAT', 'b2'], ['BWL', 'k2']]);
+  assert.deepEqual([f.captain, f.vice], ['k1', 'wb']);
+  assert.deepEqual(f.unseated, []);
+});
+
+test('bestField honours pins, and reports a pinned player with no seat left', () => {
+  const f = L.bestField(SIDE, FIELD, 3, { b1: 'out', k3: 'in' });
+  assert.deepEqual(pids(f.seats), ['b2', 'k1', 'k3', 'w1', 'wb']);
+  const g = L.bestField(SIDE, FIELD, 3, { w1: 'in', w2: 'in', k1: 'out', b1: 'out', b2: 'out', wb: 'out', k2: 'out' });
+  assert.deepEqual(pids(g.seats), ['k3', 'w1', 'w2']);
+  assert.deepEqual(g.unseated, []);
+  const h = L.bestField([...SIDE, V('w3', 5, 'WKP')], FIELD, 3, { w1: 'in', w2: 'in', w3: 'in' });
+  assert.deepEqual(h.unseated, ['w3']);
+});
+
+test('fieldScore counts the best n and doubles the captain', () => {
+  assert.equal(L.fieldScore([30, 70, 50, 60, 40], 4, 70), 290);
+});
+
+test('tradeRound is the first round with a match still to finish', () => {
+  const rounds = [{ round: 1, start: '2026-12-12', end: '2026-12-19' }, { round: 2, start: '2026-12-20', end: '2026-12-24' }];
+  const fx = [
+    { stage: 'league', start: '2026-12-14T08:00:00Z', end: '2026-12-14T11:30:00Z' },
+    { stage: 'league', start: '2026-12-21T08:00:00Z', end: '2026-12-21T11:30:00Z' },
+    { stage: 'final', start: '2027-01-20T08:00:00Z', end: '2027-01-20T11:30:00Z' },
+  ];
+  assert.equal(L.tradeRound(fx, rounds, Date.parse('2026-12-01T00:00:00Z')), 1);
+  assert.equal(L.tradeRound(fx, rounds, Date.parse('2026-12-14T11:31:00Z')), 2);
+  assert.equal(L.tradeRound(fx, rounds, Date.parse('2026-12-22T00:00:00Z')), null);
+});
+
+test('tradeStatus caps the round at the season total, and a boost adds a trade', () => {
+  const rules = { trades_round: 3, trades_total: 26, boosts: 2 };
+  const book = { trades: [...Array(23).fill({ round: 1 }), { round: 5 }, { round: 5 }], boosts: [5] };
+  assert.deepEqual(L.tradeStatus(book, rules, 5), { used: 25, inRound: 2, roundMax: 4, boosted: true, left: 1, roundLeft: 1, boostsLeft: 1 });
+  assert.equal(L.tradeStatus({ trades: [{ round: 6 }], boosts: [] }, rules, 6).roundLeft, 2);
+});
+
 test('season line and overs', () => {
   const s = L.seasonLine({ m: 4, sc: 200, inn: 4, no: 1, r: 90, bf: 60, lb: 45, rc: 54 });
   assert.equal(s.avg, 50);

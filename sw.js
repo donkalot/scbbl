@@ -1,4 +1,4 @@
-const CACHE = 'scbbl-v13';
+const CACHE = 'scbbl-v14';
 const APP_SHELL = ['./', './index.html', './logic.js', './app.js', './manifest.json', './icon.svg', './icon-192.png', './badge-96.png'];
 
 self.addEventListener('install', e => {

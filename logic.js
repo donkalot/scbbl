@@ -88,9 +88,9 @@
 
   // Seats players [{pid, pos}] in SC's squad slots. Own positions come first (augmenting paths, so a WKP/BAT
   // can move to free a BAT seat); the FLX seats then take anyone left over.
-  function slotFit(players, positions) {
+  function slotFit(players, positions, key = 'squad') {
     const slots = [];
-    for (const [pos, r] of Object.entries(positions)) if (pos !== 'FLX') for (let i = 0; i < r.squad; i++) slots.push({ pos, pid: null });
+    for (const [pos, r] of Object.entries(positions)) if (pos !== 'FLX') for (let i = 0; i < (r[key] || 0); i++) slots.push({ pos, pid: null });
     const holder = slots.map(() => -1);
     const place = (i, seen) => {
       for (let s = 0; s < slots.length; s++) {
@@ -102,7 +102,7 @@
     };
     const left = players.map((_, i) => i).filter(i => !place(i, []));
     holder.forEach((i, s) => { if (i >= 0) slots[s].pid = players[i].pid; });
-    for (let i = 0; i < ((positions.FLX && positions.FLX.squad) || 0); i++) {
+    for (let i = 0; i < ((positions.FLX && positions.FLX[key]) || 0); i++) {
       const p = left.shift();
       slots.push({ pos: 'FLX', pid: p == null ? null : players[p].pid });
     }
@@ -112,6 +112,62 @@
   // Pool players [{pid, pos, price}] within budget who still leave every squad member a seat.
   function fitting(squad, pool, positions, budget) {
     return pool.filter(p => p.price <= budget && slotFit([...squad, p], positions).unplaced.length === 0);
+  }
+
+  // Sets of players that can all be seated form a matroid, so taking the highest value first is optimal.
+  function greedySeat(order, positions, key, limit) {
+    const chosen = [];
+    for (const p of order) {
+      if (chosen.length < limit && slotFit([...chosen, p], positions, key).unplaced.length === 0) chosen.push(p);
+    }
+    return chosen;
+  }
+
+  // players [{pid, pos, value}], pins {pid: 'in'|'out'} -> on-field seats, bench, emergencies, captain and vice.
+  function bestField(players, positions, emergencies, pins = {}) {
+    const byValue = (a, b) => b.value - a.value;
+    const size = Object.values(positions).reduce((s, r) => s + (r.active || 0), 0);
+    const order = [...players.filter(p => pins[p.pid] === 'in').sort(byValue), ...players.filter(p => !pins[p.pid]).sort(byValue)];
+    const field = greedySeat(order, positions, 'active', size);
+    const bench = players.filter(p => !field.includes(p)).sort(byValue);
+    // One emergency per position, from bench players who have a game.
+    const epos = Object.fromEntries(Object.keys(positions).filter(p => p !== 'FLX').map(p => [p, { e: 1 }]));
+    const ems = greedySeat(bench.filter(p => p.value > 0), epos, 'e', emergencies);
+    const leaders = [...field].sort(byValue).filter(p => p.value > 0);
+    return {
+      seats: slotFit(field, positions, 'active').slots,
+      bench,
+      emergencies: slotFit(ems, epos, 'e').slots.filter(s => s.pid),
+      captain: leaders[0] ? leaders[0].pid : null,
+      vice: leaders[1] ? leaders[1].pid : null,
+      unseated: players.filter(p => pins[p.pid] === 'in' && !field.includes(p)).map(p => p.pid),
+    };
+  }
+
+  // Expected round score: the best `count` on-field values, plus the captain's again.
+  function fieldScore(values, count, captainValue) {
+    return [...values].sort((a, b) => b - a).slice(0, count).reduce((s, v) => s + v, 0) + (captainValue || 0);
+  }
+
+  // The round a change made at `now` counts against: the first league round with a match still to finish.
+  function tradeRound(fixture, rounds, now) {
+    const open = fixture.filter(m => m.stage === 'league' && Date.parse(m.end) > now)
+      .map(m => roundOf(localDate(m.start), rounds)).filter(Boolean);
+    return open.length ? Math.min(...open.map(r => r.round)) : null;
+  }
+
+  // book {trades: [{round, out, in}], boosts: [round]} -> what's used and left, overall and in `round`.
+  function tradeStatus(book, rules, round) {
+    const used = book.trades.length;
+    const inRound = book.trades.filter(t => t.round === round).length;
+    const boosted = book.boosts.includes(round);
+    const roundMax = rules.trades_round + (boosted ? 1 : 0);
+    return {
+      used, inRound, roundMax, boosted,
+      left: rules.trades_total - used,
+      roundLeft: Math.max(0, Math.min(roundMax - inRound, rules.trades_total - used)),
+      boostsLeft: rules.boosts - book.boosts.length,
+    };
   }
 
   function sparkPath(values, w, h) {
@@ -286,6 +342,6 @@
     return hits.length === 1 ? hits[0].pid : null;
   }
 
-  return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, slotFit, fitting, sparkPath, venueSplits, playerLog,
-           sumAggs, aggLine, battingText, bowlingText, scPoints, byeDots, caLines, rainRisk, climateRisk, windowHours, matchPid };
+  return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, slotFit, fitting,
+           bestField, fieldScore, tradeRound, tradeStatus, sparkPath, venueSplits, playerLog, sumAggs, aggLine, battingText, bowlingText, scPoints, byeDots, caLines, rainRisk, climateRisk, windowHours, matchPid };
 });

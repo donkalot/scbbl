@@ -30,6 +30,8 @@ def rules(settings):
         'cap': g['starting_salarycap'],
         'squad': g['max_players_for_team'],
         'active': g['max_active_players_for_team'],
+        # Only the best this-many on-field scores count each round.
+        'scoring': g['competitions'][0]['available_field_layout'][0]['limit_scoring_players'],
         'positions': {p['id']: {'squad': p['max_players'], 'active': p['active_max_players']} for p in g['positions']},
         'trades_round': g['game_max_changes'],
         'trades_total': g['game_max_total_changes'],
