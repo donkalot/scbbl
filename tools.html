@@ -34,9 +34,13 @@ const seen=performance.getEntriesByType('resource').map(e=>e.name).filter(n=>/\\
 const get=async u=>{const r=await fetch(u,{headers:t?{Authorization:'Bearer '+t}:{}});if(!r.ok)throw new Error(u.split('?')[0].split('/').pop()+' answered '+r.status+'. Reload the page and try again.');return r.json()};
 const settings=await get(base+'settings?min=false');
 const fixture=await get(base+'real_fixture');
-const players=await get(seen||base+'players-cf?embed=notes%2Codds%2Cplayer_stats%2Cpositions&round=0');
-if(!settings.game||!Array.isArray(fixture)||!Array.isArray(players)||!players.length||!players[0].player_stats)throw new Error('SuperCoach sent something unexpected, so nothing was saved.');
-const round=Math.max(...players.flatMap(p=>p.player_stats.map(s=>s.round)));
+const url=seen||base+'players-cf?embed=notes%2Codds%2Cplayer_stats%2Cpositions&round=0';
+const ok=x=>Array.isArray(x)&&x.length&&x[0].player_stats;
+const top=x=>Math.max(...x.flatMap(p=>p.player_stats.map(s=>s.round)));
+let players=await get(url);
+if(ok(players)&&top(players)<1)players=await get(url.replace(/([?&]round=)\\d+/,(m,k)=>k+1));
+if(!settings.game||!Array.isArray(fixture)||!ok(players))throw new Error('SuperCoach sent something unexpected, so nothing was saved.');
+const round=top(players);
 const save=(name,x)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(x)],{type:'application/json'}));a.download=name;document.body.appendChild(a);a.click();a.remove()};
 save('settings.json',settings);save('fixture.json',fixture);save('players-round'+round+'.json',players);
 }catch(e){alert('Save failed: '+e.message)}})()`;

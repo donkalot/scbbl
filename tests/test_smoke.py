@@ -359,17 +359,26 @@ def _save_bookmark(page, server):
 def test_save_prices_bookmark_downloads_the_three_raw_files(server, page):
     code = _save_bookmark(page, server)
     raw = ROOT / 'curated' / 'sc_raw'
-    auth = []
+    auth, asked = [], []
 
     def fake_sc(route):
         url = route.request.url
-        for key, name in (('settings', 'settings.json'), ('real_fixture', 'fixture.json'), ('players-cf', 'players-round1.json')):
+        if '/v1/players-cf' in url:
+            auth.append(route.request.headers.get('authorization'))
+            asked.append(re.search(r'round=(\d+)', url)[1])
+            body = ROOT / 'tests' / 'fixtures' / 'sc_players_round0.json' if asked[-1] == '0' else raw / 'players-round1.json'
+            return route.fulfill(content_type='application/json', body=body.read_text(encoding='utf-8'))
+        for key, name in (('settings', 'settings.json'), ('real_fixture', 'fixture.json')):
             if f'/v1/{key}' in url:
                 auth.append(route.request.headers.get('authorization'))
                 return route.fulfill(content_type='application/json', body=(raw / name).read_text(encoding='utf-8'))
-        route.fulfill(content_type='text/html', body="<script>localStorage.setItem('VMLS:news:accessToken', JSON.stringify('tok'));</script>")
+        route.fulfill(content_type='text/html', body="""<script>
+            localStorage.setItem('VMLS:news:accessToken', JSON.stringify('tok'));
+            fetch('/2026/api/bbl/classic/v1/players-cf?embed=notes%2Codds%2Cplayer_stats%2Cpositions&round=0&xredir=1', {headers: {Authorization: 'Bearer tok'}});</script>""")
     page.route('https://www.supercoach.com.au/**', fake_sc)
     page.goto('https://www.supercoach.com.au/2026/bbl/classic/team')
+    page.wait_for_function("performance.getEntriesByType('resource').some(e => e.name.includes('players-cf'))")
+    auth.clear(), asked.clear()
     got = []
     page.on('download', lambda d: got.append(d))
     page.evaluate('c => { (0, eval)(c); }', code)
@@ -377,7 +386,8 @@ def test_save_prices_bookmark_downloads_the_three_raw_files(server, page):
         if len(got) == 3:
             break
         page.wait_for_timeout(100)
-    assert auth == ['Bearer tok'] * 3
+    assert auth == ['Bearer tok'] * 4
+    assert asked == ['0', '1'], 'a pre-season round 0 answer is retried as round 1'
     assert sorted(d.suggested_filename for d in got) == ['fixture.json', 'players-round1.json', 'settings.json']
     for d in got:
         name = d.suggested_filename
