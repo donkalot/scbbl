@@ -14,6 +14,7 @@ This is an unofficial fan site, not affiliated with SuperCoach, News Corp or Cri
 - **Team**: checks your squad against SuperCoach's $2M cap and its position seats (2 WKP, 7 BAT, 7 BWL, 1 FLX). Dual-position players are seated wherever leaves room for the rest. An open seat lists the best affordable players who fit, keeping the cheapest price in hand for every other open seat. Trade on any player lists replacements within its price plus the money left, with the projected gain and games left.
 - **Availability**: a timeline of Tests, international white-ball series and clashing leagues against the rounds, each with its source, plus the players who miss games. A "likely" link means the squad isn't named yet; the planner still counts those games as missed.
 - **Matches**: every BBL|16 fixture with a rain-risk rating. Within 15 days of a match it comes from the Open-Meteo hourly forecast at the ground; before that, from how often the same window (±3 days, past 10 years) has had 1 mm or more. A match page shows the hourly forecast, the squads until the toss, then both XIs with live batting, bowling, fielding and SC points. It updates every 30 seconds while the match is on. Pick a captain from your squad for ×2, and see your squad's total for the match and the round so far.
+- **Pitch**: each match page says how the ground has played: the average first innings over the last 5 seasons against the league in the same seasons, season by season, and so far this season. Only full first innings count (20 overs or all out). A ground is called batting- or bowling-friendly only if it's at least 8 runs off the league and 2 standard errors clear of chance; Matches shows that as a pill. This season's games are checked daily as results come in, and flagged if they've moved at least 10 runs and 2 standard errors from the ground's usual. Reported pitch changes (re-laid squares, new drop-ins) are listed from `curated/venues.json`. It's background, not a predictor. Over 15 seasons, a ground's average has barely predicted its next season (slope 0.08 from the prior 5 seasons, 0.15 from last season alone), or even the second half of the same season (−0.06).
 - **Roles**: club moves, batting-order shifts, newly opening, started or stopped bowling, and curated news. Shifts compare each player's last 3 games with their earlier games over the last 3 seasons.
 
 ## Alerts
@@ -52,6 +53,7 @@ Changing `VAPID_PRIVATE` invalidates every subscription; subscribers have to tur
 | SC prices, positions, ownership, game rules | SuperCoach JSON saved by hand from a signed-in browser (its API blocks bots) | `curated/sc_raw/`, `pipeline/sc_import.py` |
 | Rounds | SuperCoach's `real_fixture` once every league match is covered; until then, the only split that fits SC's saved round 1 and Honeyball's published doubles and byes | `curated/sc_raw/fixture-round*.json`, `curated/rounds.json` |
 | Clashes, injuries, news | Hand-curated | `curated/availability.json`, `curated/notes.json` |
+| Ground names in Cricsheet, pitch news | Hand-curated, keyed by CA venue id | `curated/venues.json`, `pipeline/venues.py` |
 
 SC points are computed from the scorecards using `curated/scoring.json`. They're checked against SuperCoach's official BBL|15 league totals (`previous_total` in its player list): all 93 players' game counts agree, 76 totals are exact, and the rest are off by 199 points in 27,775. What's left is which fielder SuperCoach credits for a shared run-out, which follows no rule we can find, so Cricsheet's shared run-outs are split between the fielders. Byes and leg-byes are not dot balls. The live scorecard names one run-out fielder, who gets the full credit. Its dot count includes byes and leg-byes, so the live page subtracts them using the ball-by-ball commentary (`views/comments`), refetching only overs it hasn't seen. `logic.js` ports the scoring code, and a node test checks that it matches the Python on every 2025-26 line and on a replayed cricket.com.au scorecard. The Hundred uses 5-ball sets, so it gets no SC-equivalent; one-day and first-class get traditional stats only.
 
@@ -80,6 +82,7 @@ The build uses the newest players file. Every SC player must match a squad playe
    - the player count hasn't dropped by more than 25%
    - the fixture has exactly 40 league games, 10 per team, inside the season window, with no team playing twice in a day
    - every curated name resolves to a squad player
+   - every fixture ground is in `curated/venues.json`, and every Cricsheet ground name this season maps to one
    - every SuperCoach player matches a squad player, and every saved SC fixture match lines up with a CA fixture, with no overlapping rounds
 3. Commits `data/` if anything changed. GitHub Pages redeploys automatically.
 

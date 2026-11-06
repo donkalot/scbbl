@@ -106,3 +106,12 @@ def test_retired_hurt_is_not_out_and_super_over_ignored():
     w = [{'player_out': 'A', 'kind': 'retired hurt'}]
     l = _match([_dl(wickets=w)], super_over=[_dl(6) for _ in range(6)])
     assert not l['A']['out'] and l['A']['r'] == 0 and l['A']['s6'] == 0
+
+
+def test_innings_totals_match_official_scorecard():
+    d = json.loads((FX / 'cricsheet_1493243.json').read_text())
+    meta, _ = parse_match('1493243', d)
+    ca = json.loads((FX / 'ca_scorecard_23768.json').read_text())
+    overs = lambda s: int(s.split('.')[0]) * 6 + int(s.split('.')[1])
+    assert [(i['runs'], i['balls'], i['wk']) for i in meta['inns']] == [
+        (i['runsScored'], overs(i['oversBowled']), i['numberOfWicketsFallen']) for i in ca['fixture']['innings']]

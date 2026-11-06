@@ -597,7 +597,7 @@
   const EARLY_DAYS = 7;
   const CAPTAIN_KEY = 'scbbl-captain';
   const lazy = f => { let p; return () => p || (p = json(`data/${f}.json`)); };
-  const climate = lazy('climate'), scoring = lazy('scoring'), idmap = lazy('idmap');
+  const climate = lazy('climate'), scoring = lazy('scoring'), idmap = lazy('idmap'), grounds = lazy('venues');
   const forecasts = {}, cards = {};
   let view = 0, timer = null;
 
@@ -715,16 +715,19 @@
       <h2>Matches</h2>
       <div class="row" style="margin-bottom:10px"><a href="#/matches${all ? '' : '?all=1'}"><button class="${all ? 'on' : ''}">Show completed</button></a></div>
       <div class="card" id="alerts"></div>
-      <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match, marked early beyond ${EARLY_DAYS} days because it often changes. Before that it's how often the same window has been wet over the past 10 years. Tap a match for team sheets and live SC points.</p>
+      <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match, marked early beyond ${EARLY_DAYS} days because it often changes. Before that it's how often the same window has been wet over the past 10 years. A venue pill marks a ground whose first innings have clearly run high or low. Tap a match for the pitch history, team sheets and live SC points.</p>
       <div class="scroll"><table id="mtable">
         <thead><tr><th class="l">When (AEDT)</th><th class="l">Round</th><th class="l">Match</th><th class="l">Venue</th><th class="l">Rain</th><th class="l">Score</th></tr></thead>
         <tbody>${list.map(m => `<tr data-id="${m.id}">
           <td class="l">${esc(when(m.start))}</td><td class="l">${roundName(roundOfMatch(m))}</td>
           <td class="l name"><a href="#/match/${m.id}">${team(m.home)} v ${team(m.away)}</a> <span class="muted">${esc(m.name)}</span></td>
-          <td class="l muted">${esc(m.venue ? m.venue.city : 'TBC')}</td><td class="l rain"></td><td class="l status"></td></tr>`).join('')
+          <td class="l"><span class="muted">${esc(m.venue ? m.venue.city : 'TBC')}</span> <span class="pitch"></span></td><td class="l rain"></td><td class="l status"></td></tr>`).join('')
           || '<tr><td colspan="6" class="l muted">No matches left this season.</td></tr>'}</tbody></table></div>`;
     renderAlerts();
     const cell = (m, cls) => document.querySelector(`#mtable tr[data-id="${m.id}"] .${cls}`);
+    grounds().then(V => {
+      for (const m of list) { const el = m.venue && cell(m, 'pitch'); if (el) el.innerHTML = pitchPills(V.venues[m.venue.id]); }
+    }).catch(() => {});
     for (const m of list) {
       rainFor(m).then(r => { const el = cell(m, 'rain'); if (el) el.innerHTML = rainPill(r); });
       if (near(m)) {
@@ -872,6 +875,40 @@
       </tbody></table></div><p class="muted" style="margin:6px 0 0">Open-Meteo forecast at the ground.</p></div>`;
   }
 
+  const LEAN = { batting: ['ok', 'Batting-friendly'], bowling: ['warn', 'Bowling-friendly'] };
+  const PITCH_NEWS_DAYS = 60;
+  function pitchPills(v) {
+    if (!v) return '';
+    const h = v.hist, n = v.now;
+    const lean = h && LEAN[h.lean];
+    const fresh = v.notes.some(x => Date.now() - Date.parse(x.date) < PITCH_NEWS_DAYS * 864e5);
+    return [
+      lean && `<span class="pill ${lean[0]}" title="First innings ${h.diff > 0 ? '+' : ''}${fix(h.diff, 0)} runs on the league average over ${h.n} full games">${lean[1]}</span>`,
+      n && n.changed && `<span class="pill" title="This season's first innings here are ${n.changed} than this ground's usual">${n.changed === 'higher' ? 'Scoring up' : 'Scoring down'} this season</span>`,
+      fresh && '<span class="pill">Pitch news</span>',
+    ].filter(Boolean).join(' ');
+  }
+
+  function pitchCard(m, V) {
+    const v = m.venue && V.venues[m.venue.id];
+    if (!v) return '';
+    const h = v.hist, n = v.now;
+    const runs = d => `${d >= 0 ? '+' : '−'}${fix(Math.abs(d), 0)}`;
+    const games = k => `${k} full game${k === 1 ? '' : 's'}`;
+    const span = V.window ? `${V.window[0]}–${V.window[1]}` : 'recent seasons';
+    const verdict = !h ? '' : h.lean === 'even' ? 'no clear lean either way' : h.lean ? `${h.lean}-friendly` : 'too few games to call';
+    return `<div class="card"><b>Pitch</b> ${pitchPills(v)}
+      <p style="margin:6px 0 0">${h
+        ? `First innings here averaged <b>${h.par}</b> over ${games(h.n)} in ${span}, ${runs(h.diff)} runs on the league in the same seasons: ${verdict}.`
+        : `No full BBL games here in ${span}, so there's nothing to go on.`}</p>
+      ${h ? `<p class="muted" style="margin:4px 0 0">${h.seasons.map(s => `${esc(s.s)}: ${s.par} (${s.n})`).join(' · ')}</p>` : ''}
+      <p style="margin:6px 0 0">${n
+        ? `This season (${esc(V.season)}): <b>${n.par}</b> over ${games(n.n)}, ${runs(n.diff)} on the league${n.changed ? `. That's ${n.changed} than usual here, by more than chance would explain` : h && h.lean ? ', in line with its usual' : ''}.`
+        : `No full games here yet this season (${esc(V.season)}). This updates daily as results come in.`}</p>
+      ${v.notes.length ? `<div class="feed" style="margin-top:6px">${v.notes.map(x => `<div class="item"><span class="date">${newsDay(x.date)}</span><span>${esc(x.text)}${source(x.source)}</span></div>`).join('')}</div>` : ''}
+      <p class="muted" style="margin:6px 0 0">Full games only: rain-shortened first innings are left out. This is background, not a predictor. Over 15 BBL seasons a ground's average hasn't predicted its next games, not even later in the same season. Reported pitch changes, like a re-laid square or new drop-in pitches, are listed here.</p></div>`;
+  }
+
   function teamSheets(m) {
     const mine = new Set(mySquad());
     return `<div class="card"><b>XIs aren't named yet.</b> They appear at the toss, about 30 minutes before the start. Until then, here are the squads.</div>
@@ -916,8 +953,10 @@
       <div class="row"><h2 style="margin:0">${team(m.home)} v ${team(m.away)}</h2><span class="muted">${esc(m.name)}${r ? ` · ${r.finals ? 'Finals' : 'Round ' + r.round}` : ''}</span></div>
       <p class="muted">${esc(when(m.start))} AEDT · ${esc(m.venue ? `${m.venue.name}, ${m.venue.city}` : 'Venue TBC')}</p>
       <div id="rain"></div>
+      <div id="pitch"></div>
       <div id="live"><p class="muted">Loading the scorecard…</p></div>`;
     rainFor(m).then(x => { if (token === view) renderRain(x); });
+    grounds().then(V => { const el = document.getElementById('pitch'); if (el && token === view) el.innerHTML = pitchCard(m, V); }).catch(() => {});
     const [table, ids] = await Promise.all([scoring(), idmap()]);
     // The rest of the round: started matches only. Finished ones are fetched once, live ones every poll.
     const others = D.fixture.filter(x => x.id !== m.id && roundOfMatch(x) === r && r && Date.parse(x.start) < Date.now());

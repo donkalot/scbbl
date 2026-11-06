@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from . import climate, cricsheet, elsewhere, fixture, guards, register, roles, sc_import, squads
+from . import climate, cricsheet, elsewhere, fixture, guards, register, roles, sc_import, squads, venues
 from .common import CURATED, DATA, write_json
 from .scoring import sc_points
 
@@ -57,6 +57,8 @@ def main():
     guards.fail_if(fixture.check(fx), 'fixture')
     clim_path = DATA / 'climate.json'
     clim = climate.build(fx, json.loads(clim_path.read_text()) if clim_path.exists() else {})
+    grounds, problems = venues.build(by_season, fx)
+    guards.fail_if(problems, 'venues')
 
     sq, _ = squads.build(players)
     ew, comp_matches, new_players, problems = elsewhere.build(sq, baseline)
@@ -79,6 +81,7 @@ def main():
     write_json(DATA / 'players.json', players)
     write_json(DATA / 'fixture.json', fx)
     write_json(clim_path, clim)
+    write_json(DATA / 'venues.json', grounds)
     write_json(DATA / 'scoring.json', json.loads((CURATED / 'scoring.json').read_text()))
     write_json(DATA / 'squads.json', sq)
     write_json(DATA / 'elsewhere.json', ew)

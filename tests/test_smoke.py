@@ -423,3 +423,20 @@ def test_live_match_polls_until_you_leave(server, page):
     page.clock.run_for(65_000)
     page.wait_for_timeout(300)
     assert len(hits) == left
+
+
+def test_pitch_note_on_the_match_list_and_match_page(server, page):
+    page.clock.set_fixed_time('2026-11-05T00:00:00Z')
+    _mock_feeds(page)
+    page.goto(server + '#/matches')
+    # The Gabba has run clearly high over the last 5 seasons; Chennai has no BBL history.
+    expect(page.locator(f'#mtable tr[data-id="{HEA_V_SCO}"] .pitch')).to_contain_text('Batting-friendly')
+    expect(page.locator('#mtable tr[data-id="40719"] .pitch')).to_have_text('')
+    page.goto(server + f'#/match/{HEA_V_SCO}')
+    pitch = page.locator('#pitch')
+    expect(pitch).to_contain_text('batting-friendly')
+    expect(pitch).to_contain_text('2025/26:')
+    expect(pitch).to_contain_text('No full games here yet this season (2026/27)')
+    expect(pitch).to_contain_text('background, not a predictor')
+    page.goto(server + '#/match/40719')
+    expect(page.locator('#pitch')).to_contain_text('No full BBL games here')

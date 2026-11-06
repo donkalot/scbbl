@@ -51,9 +51,12 @@ def parse_match(mid, d, code=team_code):
                            **_blank()}
         return lines[name]
 
+    inns = []
     for inn in d['innings']:
         if inn.get('super_over'):
             continue
+        tot = {'team': code(inn['team']), 'runs': 0, 'balls': 0, 'wk': 0}
+        inns.append(tot)
         order = []
         ib = defaultdict(lambda: [0, 0, False])
         iw = defaultdict(lambda: [0, 0, 0])
@@ -87,6 +90,9 @@ def parse_match(mid, d, code=team_code):
                 bwl['wd'] += 1 if wide else 0
                 bwl['nb'] += 1 if nb else 0
                 legal = not wide and not nb
+                tot['runs'] += dl['runs']['total']
+                tot['balls'] += legal
+                tot['wk'] += sum(w['kind'] not in NOT_OUT_KINDS for w in dl.get('wickets', []))
                 if legal:
                     bwl['lb'] += 1
                     iw[dl['bowler']][0] += 1
@@ -141,6 +147,7 @@ def parse_match(mid, d, code=team_code):
         'teams': [code(t) for t in teams],
         'result': _result(info.get('outcome', {}), code),
         'final': 'stage' in info.get('event', {}) and info['event']['stage'] != 'group',
+        'inns': inns,
     }
     return meta, list(lines.values())
 
