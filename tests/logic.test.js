@@ -216,6 +216,23 @@ test('window hours use Open-Meteo end-of-hour labels', () => {
     ['2026-12-12T10:00', '2026-12-12T11:00', '2026-12-12T12:00']);
 });
 
+test('a SuperCoach team imports as squad, captain and on-field pins, from JSON or the bookmarklet code', () => {
+  const resp = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sc_statsPlayers.json'), 'utf8'));
+  const sc = data('sc.json').players;
+  const idToPid = Object.fromEntries(Object.entries(sc).map(([pid, r]) => [r.id, pid]));
+  const picks = L.scPicks(resp);
+  assert.equal(picks.length, 17);
+  assert.equal(picks[0].round, 1);
+  const t = L.scImport(picks, idToPid);
+  assert.equal(t.squad.length, 17);
+  assert.deepEqual(t.missing, []);
+  assert.equal(sc[t.captain].id, 15);
+  assert.equal(Object.values(t.pins).filter(v => v === 'in').length, 12);
+  const code = resp.players.map(p => `${p.player_id}:${p.picked}`).join(',');
+  assert.deepEqual(L.scImport(L.scPicks(code), idToPid), t);
+  assert.deepEqual(L.scImport(L.scPicks('99999:true,15:capt,bad'), idToPid), { squad: [t.captain], captain: t.captain, pins: { [t.captain]: 'in' }, missing: [99999] });
+});
+
 test('CA players map by id, then by surname and initial within the squad', () => {
   const rows = [{ pid: 'a', n: 'Jonny Bairstow' }, { pid: 'b', n: 'Tom Curran' }, { pid: 'c', n: 'Sam Curran' }];
   assert.equal(L.matchPid({ ca: 1, name: 'X' }, { 1: 'z' }, rows), 'z');

@@ -342,6 +342,30 @@
     return hits.length === 1 ? hits[0].pid : null;
   }
 
+  // SC userteams/{id}/statsPlayers JSON, or the bookmarklet's "98:true,8:vice", -> [{id, picked, round}].
+  function scPicks(x) {
+    if (typeof x === 'string') {
+      return x.split(',').map(s => /^(\d+):([a-z]+)$/.exec(s)).filter(Boolean).map(m => ({ id: Number(m[1]), picked: m[2] }));
+    }
+    return ((x && x.players) || []).filter(p => p && p.player_id != null)
+      .map(p => ({ id: Number(p.player_id), picked: String(p.picked), round: p.round }));
+  }
+
+  // SC marks the on-field 12 as 'true', 'capt' or 'vice' and the bench as 'false'.
+  function scImport(picks, idToPid) {
+    const squad = [], pins = {}, missing = [];
+    let captain = null;
+    for (const p of picks) {
+      const pid = idToPid[p.id];
+      if (!pid) { missing.push(p.id); continue; }
+      if (squad.includes(pid)) continue;
+      squad.push(pid);
+      pins[pid] = ['true', 'capt', 'vice'].includes(p.picked) ? 'in' : 'out';
+      if (p.picked === 'capt') captain = pid;
+    }
+    return { squad, captain, pins, missing };
+  }
+
   return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, slotFit, fitting,
-           bestField, fieldScore, tradeRound, tradeStatus, sparkPath, venueSplits, playerLog, sumAggs, aggLine, battingText, bowlingText, scPoints, byeDots, caLines, rainRisk, climateRisk, windowHours, matchPid };
+           bestField, fieldScore, tradeRound, tradeStatus, sparkPath, venueSplits, playerLog, sumAggs, aggLine, battingText, bowlingText, scPoints, byeDots, caLines, rainRisk, climateRisk, windowHours, matchPid, scPicks, scImport };
 });

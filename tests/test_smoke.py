@@ -267,6 +267,87 @@ def test_trades_count_after_the_lockout_with_undo_boost_and_limit(server, page):
     expect(page.locator('#opts button[data-in]').first).to_be_disabled()
 
 
+SC_TEAM = json.loads((ROOT / 'tests' / 'fixtures' / 'sc_statsPlayers.json').read_text(encoding='utf-8'))
+
+
+def _sc_pid(sc_id):
+    return next(pid for pid, p in _sc_players().items() if p['id'] == sc_id)
+
+
+def _bookmarklet(page, server):
+    from urllib.parse import unquote
+    page.goto(server + '#/team')
+    href = page.locator('#scbm').get_attribute('href')
+    assert href.startswith('javascript:')
+    return unquote(href[len('javascript:'):])
+
+
+def _check_imported(page, server):
+    on = {_sc_pid(p['player_id']) for p in SC_TEAM['players'] if p['picked'] != 'false'}
+    capt = _sc_pid(next(p['player_id'] for p in SC_TEAM['players'] if p['picked'] == 'capt'))
+    imp = page.locator('#import')
+    expect(imp).to_contain_text('round 1')
+    expect(imp).to_contain_text('17 players, 12 on field')
+    imp.locator('button[data-import]').click()
+    expect(page).to_have_url(server + '#/team?field=1')
+    expect(page.locator('.stat').first).to_contain_text('17/17')
+    assert json.loads(page.evaluate("localStorage.getItem('scbbl-captain')")) == {'1': capt}
+    pins = json.loads(page.evaluate("localStorage.getItem('scbbl-field')"))['1']
+    assert {pid for pid, v in pins.items() if v == 'in'} == on and len(pins) == 17
+    expect(page.locator('#field tbody tr')).to_have_count(12)
+    expect(page.locator('#field .pill', has_text=re.compile(r'^C$'))).to_have_count(1)
+    page.click('#unpin')
+    expect(page.locator('#unpin')).to_have_count(0)
+    assert json.loads(page.evaluate("localStorage.getItem('scbbl-field')"))['1'] == {}
+
+
+def test_bookmarklet_imports_the_team_from_a_logged_in_supercoach_page(server, page):
+    marsh = _squad_pid('SCO', 'Mitchell Marsh')
+    _seed(page, [marsh])
+    code = _bookmarklet(page, server)
+    auth = []
+
+    def fake_sc(route):
+        if 'statsPlayers' in route.request.url:
+            auth.append(route.request.headers.get('authorization'))
+            if auth[-1] == 'Bearer tok':
+                return route.fulfill(json=SC_TEAM)
+            return route.fulfill(status=401, json={'message': 'bad credentials'})
+        route.fulfill(content_type='text/html', body="""<script>
+            localStorage.setItem('VMLS:news:accessToken', 'tok');
+            fetch('/2026/api/bbl/classic/v1/userteams/1/statsPlayers?round=1', {headers: {Authorization: 'Bearer tok'}});</script>""")
+    page.route('https://www.supercoach.com.au/**', fake_sc)
+    page.goto('https://www.supercoach.com.au/2026/bbl/classic/team')
+    page.wait_for_function("performance.getEntriesByType('resource').some(e => e.name.includes('statsPlayers'))")
+    page.evaluate('c => { (0, eval)(c); }', code)
+    expect(page).to_have_url(re.compile(r'#/team\?r=1&sc='))
+    assert auth == ['Bearer tok', 'Bearer tok']
+    assert 'tok' not in page.url
+    expect(page.locator('#import')).to_contain_text('This replaces your squad of 1')
+    _check_imported(page, server)
+
+
+def test_bookmarklet_explains_when_not_on_the_team_page(server, page):
+    code = _bookmarklet(page, server)
+    msgs = []
+    page.on('dialog', lambda d: (msgs.append(d.message), d.dismiss()))
+    page.evaluate('c => (0, eval)(c)', code)
+    assert msgs == ['Open or reload your team page in SuperCoach BBL, then click this bookmark again.']
+
+
+def test_pasted_statsplayers_response_imports_the_team(server, page):
+    _seed(page, [])
+    page.goto(server + '#/team')
+    page.click('#importhelp summary')
+    page.fill('#scpaste', '{"not": "it"}')
+    page.click('#scpastego')
+    expect(page.locator('#scpasteerr')).to_contain_text("isn't a statsPlayers response")
+    page.fill('#scpaste', json.dumps(SC_TEAM))
+    page.click('#scpastego')
+    expect(page.locator('#import')).not_to_contain_text('replaces')
+    _check_imported(page, server)
+
+
 def test_availability_lists_ruled_out_player(server, page):
     page.goto(server + '#/availability')
     expect(page.locator('#app table tbody tr', has_text='Jason Behrendorff')).to_have_count(1)

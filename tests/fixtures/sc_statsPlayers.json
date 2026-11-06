@@ -1,0 +1,208 @@
+{
+ "stats": [
+  {
+   "round": 1,
+   "salarycap": 32600,
+   "points": 0,
+   "total_points": 0,
+   "position": null,
+   "last_position": null,
+   "round_position": null,
+   "raw_position": null,
+   "raw_round_position": null,
+   "raw_price_position": null,
+   "price": 1967400,
+   "price_change": 0,
+   "total_price_change": 0,
+   "rounds_played": null,
+   "formation_id": null,
+   "best_total_points": 0,
+   "secondary_points": 0,
+   "secondary_total_points": 0,
+   "last_round_position": null,
+   "last_round_points": 0,
+   "changes": 0,
+   "total_changes": 0,
+   "trade_boosts_used": null,
+   "last_trade_boosts_used": null,
+   "proj_points": 1309,
+   "league_wins": 0,
+   "league_draws": 0,
+   "league_losses": 0,
+   "user_team_id": 1
+  }
+ ],
+ "players": [
+  {
+   "player_id": 98,
+   "round": 1,
+   "picked": "true",
+   "position": "WKP",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Wicketkeeper",
+   "position_sort": 1
+  },
+  {
+   "player_id": 105,
+   "round": 1,
+   "picked": "false",
+   "position": "WKP",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Wicketkeeper",
+   "position_sort": 1
+  },
+  {
+   "player_id": 8,
+   "round": 1,
+   "picked": "vice",
+   "position": "BAT",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Batsman",
+   "position_sort": 2
+  },
+  {
+   "player_id": 9,
+   "round": 1,
+   "picked": "true",
+   "position": "BAT",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Batsman",
+   "position_sort": 2
+  },
+  {
+   "player_id": 60,
+   "round": 1,
+   "picked": "true",
+   "position": "BAT",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Batsman",
+   "position_sort": 2
+  },
+  {
+   "player_id": 82,
+   "round": 1,
+   "picked": "false",
+   "position": "BAT",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Batsman",
+   "position_sort": 2
+  },
+  {
+   "player_id": 92,
+   "round": 1,
+   "picked": "true",
+   "position": "BAT",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Batsman",
+   "position_sort": 2
+  },
+  {
+   "player_id": 93,
+   "round": 1,
+   "picked": "true",
+   "position": "BAT",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Batsman",
+   "position_sort": 2
+  },
+  {
+   "player_id": 112,
+   "round": 1,
+   "picked": "false",
+   "position": "BAT",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Batsman",
+   "position_sort": 2
+  },
+  {
+   "player_id": 15,
+   "round": 1,
+   "picked": "capt",
+   "position": "BWL",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Bowler",
+   "position_sort": 3
+  },
+  {
+   "player_id": 18,
+   "round": 1,
+   "picked": "true",
+   "position": "BWL",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Bowler",
+   "position_sort": 3
+  },
+  {
+   "player_id": 22,
+   "round": 1,
+   "picked": "true",
+   "position": "BWL",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Bowler",
+   "position_sort": 3
+  },
+  {
+   "player_id": 39,
+   "round": 1,
+   "picked": "true",
+   "position": "BWL",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Bowler",
+   "position_sort": 3
+  },
+  {
+   "player_id": 88,
+   "round": 1,
+   "picked": "true",
+   "position": "BWL",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Bowler",
+   "position_sort": 3
+  },
+  {
+   "player_id": 100,
+   "round": 1,
+   "picked": "false",
+   "position": "BWL",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Bowler",
+   "position_sort": 3
+  },
+  {
+   "player_id": 110,
+   "round": 1,
+   "picked": "false",
+   "position": "BWL",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Bowler",
+   "position_sort": 3
+  },
+  {
+   "player_id": 94,
+   "round": 1,
+   "picked": "true",
+   "position": "FLX",
+   "updated": "2026-11-04T20:00:00+11:00",
+   "user_team_id": 1,
+   "position_long": "Flex",
+   "position_sort": 4
+  }
+ ],
+ "trades": []
+}

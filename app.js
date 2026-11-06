@@ -436,6 +436,53 @@
   }
 
   // ---------- team ----------
+  // Runs on supercoach.com.au with the user's own login. Re-fetches the statsPlayers request the team page
+  // already made, and hands only player ids and picks to this site; the token never leaves SuperCoach.
+  function bookmarklet() {
+    const site = location.href.split('#')[0];
+    const code = `(async()=>{try{
+const u=performance.getEntriesByType('resource').map(e=>e.name).filter(n=>/\\/api\\/bbl\\/classic\\/v1\\/userteams\\/\\d+\\/statsPlayers/.test(n)).pop();
+if(!u)return alert('Open or reload your team page in SuperCoach BBL, then click this bookmark again.');
+let t=localStorage.getItem('VMLS:news:accessToken');try{const j=JSON.parse(t);t=typeof j=='string'?j:j&&(j.accessToken||j.access_token||j.token)}catch(e){}
+if(!t)return alert('Log in to SuperCoach first.');
+const r=await fetch(u,{headers:{Authorization:'Bearer '+t}});
+if(!r.ok)return alert('SuperCoach answered '+r.status+'. Reload your team page and try again.');
+const d=await r.json();
+location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')+'&sc='+encodeURIComponent(d.players.map(p=>p.player_id+':'+p.picked).join(','));
+}catch(e){alert('Import failed: '+e.message)}})()`;
+    return 'javascript:' + encodeURIComponent(code.replace(/\n/g, ''));
+  }
+
+  function importCard(params, rules) {
+    const idToPid = Object.fromEntries(Object.entries(D.sc.players).map(([pid, r]) => [r.id, pid]));
+    if (params.get('sc')) {
+      const t = L.scImport(L.scPicks(params.get('sc')), idToPid);
+      const r = leagueRounds.find(x => x.round === Number(params.get('r')));
+      const mine = mySquad();
+      const same = mine.length === t.squad.length && t.squad.every(pid => mine.includes(pid));
+      return {
+        t, r,
+        html: `<div class="card" id="import"><b>Import your SuperCoach team${r ? ` for round ${r.round}` : ''}</b>
+          ${t.squad.length ? `<p style="margin:6px 0">${t.squad.length} players, ${Object.values(t.pins).filter(v => v === 'in').length} on field${t.captain ? `, captain ${esc(name(t.captain))}` : ''}.
+            ${mine.length && !same ? `This replaces your squad of ${mine.length} here.` : ''}
+            ${r ? `Round ${r.round} on field will match your SuperCoach side${t.captain ? ' and captain' : ''}.` : ''}</p>
+            ${t.missing.length ? `<p class="muted">${t.missing.length} SuperCoach player${t.missing.length > 1 ? 's aren\'t' : ' isn\'t'} in our price list yet and ${t.missing.length > 1 ? 'are' : 'is'} left out.</p>` : ''}
+            <button data-import="1">Import</button> <a href="#/team">Cancel</a>`
+          : '<p>None of those players are in our price list. <a href="#/team">Close</a></p>'}</div>`,
+      };
+    }
+    return {
+      html: `<details class="card" id="importhelp"><summary><b>Import your team from SuperCoach</b></summary>
+        <p>Drag this link to your bookmarks bar: <a id="scbm" class="pill" href="${esc(bookmarklet())}" onclick="event.preventDefault()">SC BBL import</a>.
+          Then open your team page on supercoach.com.au, logged in, and click the bookmark. It brings your squad, on-field picks and captain here.
+          It runs in your own browser and sends nothing but player numbers to this site: your login stays on SuperCoach.</p>
+        <p class="muted">On a phone: <button id="copybm">Copy the bookmark</button>, save any page as a bookmark, edit it, paste this over its address and name it "SC BBL import". On your team page, type that name in the address bar and pick the bookmark.</p>
+        <p class="muted">If the bookmark stops working: open your team page with DevTools (F12) on the Network tab, find the <code>statsPlayers</code> request, right-click it, choose Copy response and paste it here.</p>
+        <textarea id="scpaste" rows="3" style="width:100%" placeholder="Paste the statsPlayers response"></textarea>
+        <div class="row"><button id="scpastego">Import pasted team</button> <span id="scpasteerr" class="muted"></span></div></details>`,
+    };
+  }
+
   function viewTeam(params) {
     if (!D.sc) {
       $app.innerHTML = '<h2>Team</h2><div class="card">No SuperCoach prices yet, so the cap and positions can\'t be checked.</div>';
@@ -517,6 +564,7 @@
         <td class="l"><a href="#/team?out=${encodeURIComponent(pid)}">Trade</a> ${squadButton(pid).replace('<button', '<button data-rerender="1"')}</td></tr>`;
     };
 
+    const imp = importCard(params, rules);
     const roundsLeft = leagueRounds.filter(r => r.round >= next.round).length;
     const trades = `<div class="card" id="trades"><b>Trades</b>
       ${!locked ? `<p class="muted" style="margin:6px 0 0">Changes are free until the first lockout, ${esc(when(rules.lockout))}. After that, each Swap here counts as a trade: ${rules.trades_round} a round and ${rules.trades_total} for the season.</p>` : `
@@ -569,6 +617,7 @@
         <div class="stat"><span class="muted">Round ${fr.round} projection</span><b id="fscore">${fix(score, 0)}</b></div>
         <div class="stat"><span class="muted">Playing</span><b>${onField.filter(pid => val(pid) > 0).length}/${rules.active}</b></div>
       </div>
+      ${Object.keys(pins).length ? `<p><button data-pin="*" data-to="" id="unpin">Clear all ${Object.keys(pins).length} keep on/off picks</button> <span class="muted">to see the suggested side</span></p>` : ''}
       ${side.unseated.length ? `<div class="banner">No on-field seat left for ${side.unseated.map(name).map(esc).join(', ')}, kept on by you.</div>` : ''}
       <div class="scroll"><table id="field">
         <thead><tr><th class="l">Seat</th><th class="l">Player</th><th class="l">Team</th><th>Games</th><th>Proj</th><th>Exp</th><th></th><th></th></tr></thead>
@@ -592,6 +641,7 @@
         <div class="stat"><span class="muted">Left of ${price(rules.cap)}</span><b id="left"${left < 0 ? ' style="color:#c53030"' : ''}>${price(left)}</b></div>
         <div class="stat"><span class="muted">Per open seat</span><b>${open.length ? price(left / open.length) : '–'}</b></div>
       </div>
+      ${imp.html}
       ${problems.length ? `<div class="banner" id="problems">${problems.map(esc).join('<br>')}</div>` : ''}
       ${trades}
       ${picker}
@@ -606,9 +656,36 @@
 
     const saveSquad = s => localStorage.setItem(SQUAD_KEY, JSON.stringify(s));
     $app.onclick = e => {
-      const b = e.target.closest('[data-in],[data-undo],[data-boost],[data-pin],[data-cap]');
+      const b = e.target.closest('[data-in],[data-undo],[data-boost],[data-pin],[data-cap],[data-import],#copybm,#scpastego');
       if (!b || b.disabled) return;
       const d = b.dataset;
+      if (b.id === 'copybm') {
+        navigator.clipboard.writeText(bookmarklet()).then(() => { b.textContent = 'Copied'; }, () => { b.textContent = 'Copy failed'; });
+        return;
+      }
+      if (b.id === 'scpastego') {
+        let picks = [];
+        try { picks = L.scPicks(JSON.parse(document.getElementById('scpaste').value)); } catch { /* reported below */ }
+        if (!picks.length) {
+          document.getElementById('scpasteerr').textContent = "That isn't a statsPlayers response: it should start with {\"stats\":";
+          return;
+        }
+        go(`#/team?r=${picks[0].round || ''}&sc=${encodeURIComponent(picks.map(p => `${p.id}:${p.picked}`).join(','))}`);
+        return;
+      }
+      if (d.import) {
+        saveSquad(imp.t.squad);
+        if (imp.r) {
+          const all = fieldPins();
+          all[imp.r.round] = imp.t.pins;
+          localStorage.setItem(FIELD_KEY, JSON.stringify(all));
+          const caps = captains();
+          if (imp.t.captain) caps[imp.r.round] = imp.t.captain; else delete caps[imp.r.round];
+          localStorage.setItem(CAPTAIN_KEY, JSON.stringify(caps));
+        }
+        go(imp.r ? `#/team?field=${imp.r.round}` : '#/team');
+        return;
+      }
       if (d.in) {
         const s = mySquad();
         const i = d.out ? s.indexOf(d.out) : -1;
@@ -632,7 +709,8 @@
       } else if (d.pin) {
         const all = fieldPins();
         const p = all[rk] || {};
-        if (d.to) p[d.pin] = d.to; else delete p[d.pin];
+        if (d.pin === '*') for (const k of Object.keys(p)) delete p[k];
+        else if (d.to) p[d.pin] = d.to; else delete p[d.pin];
         all[rk] = p;
         localStorage.setItem(FIELD_KEY, JSON.stringify(all));
       } else if (d.cap) {
