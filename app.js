@@ -1211,11 +1211,12 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
 
   // Sends the page name only; the rest of the hash can hold a SuperCoach team.
   const PAGES = ['players', 'player', 'planner', 'team', 'availability', 'matches', 'match', 'roles'];
-  let counted;
+  let uncounted = [];
   function countVisit(page) {
     if (location.hostname !== 'donkalot.github.io') return;
-    counted = '/' + page;
-    if (window.goatcounter && window.goatcounter.count) return window.goatcounter.count({ path: counted });
+    const path = '/' + page;
+    if (window.goatcounter && window.goatcounter.count) return window.goatcounter.count({ path });
+    uncounted.push(path);
     if (document.getElementById('goatcounter')) return;
     const s = document.createElement('script');
     s.id = 'goatcounter';
@@ -1223,7 +1224,10 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     s.src = 'https://gc.zgo.at/count.js';
     s.dataset.goatcounter = 'https://scbbl.goatcounter.com/count';
     s.dataset.goatcounterSettings = JSON.stringify({ no_onload: true });
-    s.onload = () => window.goatcounter && window.goatcounter.count && window.goatcounter.count({ path: counted });
+    s.onload = () => {
+      if (window.goatcounter && window.goatcounter.count) uncounted.forEach(p => window.goatcounter.count({ path: p }));
+      uncounted = [];
+    };
     document.head.appendChild(s);
   }
 

@@ -356,16 +356,21 @@ def test_visit_counts_send_the_page_name_only(page):
             return route.fulfill(status=404, body='')
         route.fulfill(body=f.read_bytes(), content_type={'.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml'}.get(f.suffix, 'text/html'))
     page.route('https://donkalot.github.io/scbbl/**', site)
-    page.route('https://gc.zgo.at/count.js', lambda r: r.fulfill(content_type='text/javascript', body="""
-        const me = document.currentScript;
-        window.counts = [[me.dataset.goatcounter, JSON.parse(me.dataset.goatcounterSettings).no_onload]];
-        window.goatcounter = { count: v => window.counts.push(v.path) };"""))
+    held = []
+    page.route('https://gc.zgo.at/count.js', lambda r: held.append(r))
     page.route(re.compile(r'https://(api\.open-meteo\.com|apiv2\.cricket\.com\.au)/.*'), lambda r: r.abort())
     page.goto('https://donkalot.github.io/scbbl/#/team?r=1&sc=98:true,8:vice')
     expect(page.locator('#import')).to_be_visible()
     page.goto('https://donkalot.github.io/scbbl/#/planner')
+    expect(page.locator('#app h2').first).to_have_text('Doubles and byes')
+    assert len(held) == 1, 'the counter script loads once, after the first page'
+    held[0].fulfill(content_type='text/javascript', body="""
+        const me = document.currentScript;
+        window.counts = [[me.dataset.goatcounter, JSON.parse(me.dataset.goatcounterSettings).no_onload]];
+        window.goatcounter = { count: v => window.counts.push(v.path) };""")
+    page.wait_for_function('window.counts && window.counts.length >= 3')
     page.click('#tabs a[data-tab=roles]')
-    page.wait_for_function('window.counts && window.counts.length >= 4')
+    page.wait_for_function('window.counts.length >= 4')
     assert page.evaluate('window.counts') == [['https://scbbl.goatcounter.com/count', True], '/team', '/planner', '/roles']
 
 
