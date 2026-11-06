@@ -14,9 +14,37 @@
     {"id": "nz-sl-white", "name": "New Zealand v Sri Lanka, ODIs and T20Is", "kind": "intl", "start": "2027-01-16", "end": "2027-01-31", "verified": true, "source": "https://www.icc-cricket.com/news/new-zealand-announce-schedule-for-action-packed-home-summer"},
     {"id": "sa20", "name": "SA20 (South Africa)", "kind": "league", "start": "2027-01-17", "end": "2027-02-21", "verified": false, "source": "https://en.wikipedia.org/wiki/2027_SA20"},
     {"id": "aus-ind-t1", "name": "India v Australia, 1st Test (Nagpur)", "kind": "test", "start": "2027-01-21", "end": "2027-01-25", "verified": true, "source": "https://www.bcci.tv/news/article/fixtures-unveiled-for-team-india-s-international-home-season-2026-27"},
-    {"id": "behrendorff-shoulder", "name": "Shoulder injury, ruled out for the season", "kind": "injury", "start": "2026-12-12", "end": "2027-01-26", "verified": true, "source": "Wikipedia, 2026-11-04"}
+    {"id": "behrendorff-shoulder", "name": "Shoulder injury, ruled out for the season", "kind": "injury", "start": "2026-12-12", "end": "2027-01-26", "verified": true, "source": "Wikipedia, 2026-11-04"},
+    {"id": "curran-family", "name": "Family commitments, misses the first three matches", "kind": "personal", "start": "2026-12-12", "end": "2026-12-21", "verified": true, "source": "https://www.espn.com.au/cricket/story/_/id/50138277/bevon-jacobs-set-take-leave-auckland-commitments-bbl-gig"},
+    {"id": "jacobs-cover", "name": "Short-term cover for Tom Curran, then back to Auckland", "kind": "personal", "start": "2026-12-22", "end": "2027-01-26", "verified": true, "source": "https://www.espn.com.au/cricket/story/_/id/50138277/bevon-jacobs-set-take-leave-auckland-commitments-bbl-gig"},
+    {"id": "mustafizur-ilt20", "name": "ILT20 (Dubai Capitals), misses the Chennai opener", "kind": "personal", "start": "2026-12-12", "end": "2026-12-12", "verified": true, "source": "https://www.melbournerenegades.com.au/news/4604132/renegades-launch-the-fizz-bay-as-mustafizur-rahman-signs-for-bbl16"},
+    {"id": "rishad-first-8", "name": "Signed for the Hurricanes' first 8 matches only (SA20 follows)", "kind": "personal", "start": "2027-01-13", "end": "2027-01-26", "verified": true, "source": "https://www.cricket.com.au/news/4592004/rishad-hossain-signs-with-hobart-hurricanes-big-bash-leagues-2026-2027-leg-spin-stocks-zampa-beams-hope"}
   ],
   "links": [
-    {"team": "REN", "player": "Jason Behrendorff", "event": "behrendorff-shoulder"}
+    {"team": "REN", "player": "Jason Behrendorff", "event": "behrendorff-shoulder"},
+    {"team": "HEA", "player": "Tom Curran", "event": "curran-family"},
+    {"team": "HEA", "player": "Bevon Jacobs", "event": "jacobs-cover"},
+    {"team": "REN", "player": "Mustafizur Rahman", "event": "mustafizur-ilt20"},
+    {"team": "HUR", "player": "Rishad Hossain", "event": "rishad-first-8"},
+    {"team": "STR", "player": "Alex Carey", "event": "aus-nz-t1", "likely": true},
+    {"team": "STR", "player": "Alex Carey", "event": "aus-nz-t2", "likely": true},
+    {"team": "STR", "player": "Alex Carey", "event": "aus-nz-t3", "likely": true},
+    {"team": "STR", "player": "Alex Carey", "event": "aus-nz-t4", "likely": true},
+    {"team": "STR", "player": "Alex Carey", "event": "aus-ind-t1", "likely": true},
+    {"team": "SIX", "player": "Steve Smith", "event": "aus-nz-t1", "likely": true},
+    {"team": "SIX", "player": "Steve Smith", "event": "aus-nz-t2", "likely": true},
+    {"team": "SIX", "player": "Steve Smith", "event": "aus-nz-t3", "likely": true},
+    {"team": "SIX", "player": "Steve Smith", "event": "aus-nz-t4", "likely": true},
+    {"team": "SIX", "player": "Steve Smith", "event": "aus-ind-t1", "likely": true},
+    {"team": "HUR", "player": "Jake Weatherald", "event": "aus-nz-t1", "likely": true},
+    {"team": "HUR", "player": "Jake Weatherald", "event": "aus-nz-t2", "likely": true},
+    {"team": "HUR", "player": "Jake Weatherald", "event": "aus-nz-t3", "likely": true},
+    {"team": "HUR", "player": "Jake Weatherald", "event": "aus-nz-t4", "likely": true},
+    {"team": "HUR", "player": "Jake Weatherald", "event": "aus-ind-t1", "likely": true},
+    {"team": "HUR", "player": "Beau Webster", "event": "aus-nz-t1", "likely": true},
+    {"team": "HUR", "player": "Beau Webster", "event": "aus-nz-t2", "likely": true},
+    {"team": "HUR", "player": "Beau Webster", "event": "aus-nz-t3", "likely": true},
+    {"team": "HUR", "player": "Beau Webster", "event": "aus-nz-t4", "likely": true},
+    {"team": "HUR", "player": "Beau Webster", "event": "aus-ind-t1", "likely": true}
   ]
 }

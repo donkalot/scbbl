@@ -53,7 +53,7 @@ function unavailable(m, data) {
   for (const t of [m.home, m.away]) {
     for (const p of data.squads.teams[t] || []) {
       const ev = L.eventsFor(p.pid, data.availability).find(e => e.start <= day && day <= e.end);
-      if (ev) out.push(`${p.n} (${t}): ${ev.name}`);
+      if (ev) out.push(`${p.n} (${t}): ${ev.name}${ev.likely ? ' (likely)' : ''}`);
     }
   }
   return out;

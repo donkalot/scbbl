@@ -40,6 +40,10 @@ test('availability removes games that fall inside a linked event', () => {
   const r = L.playerRounds('HEA', 'p1', grid, availability);
   assert.deepEqual([r[1].games, r[1].available, r[2].available], [2, 1, 1]);
   assert.equal(L.playerRounds('HEA', 'other', grid, availability)[1].available, 2);
+  availability.links.push({ pid: 'p2', event: 't2', likely: true });
+  assert.deepEqual(L.eventsFor('p2', availability).map(e => e.likely), [true]);
+  assert.equal(L.eventsFor('p1', availability)[0].likely, false);
+  assert.equal(L.playerRounds('HEA', 'p2', grid, availability)[1].available, 1);
 });
 
 test('projAvg uses the last two seasons, career when that is too thin', () => {

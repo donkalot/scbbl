@@ -33,9 +33,10 @@
     return grid;
   }
 
+  // A link marked likely is a squad not yet named; it still counts as missed, so plans stay conservative.
   function eventsFor(pid, availability) {
-    const ids = new Set(availability.links.filter(l => l.pid === pid).map(l => l.event));
-    return availability.events.filter(e => ids.has(e.id));
+    const likely = new Map(availability.links.filter(l => l.pid === pid).map(l => [l.event, !!l.likely]));
+    return availability.events.filter(e => likely.has(e.id)).map(e => ({ ...e, likely: likely.get(e.id) }));
   }
 
   // Per round: games the player's team plays, and which of those clash with the player's events.

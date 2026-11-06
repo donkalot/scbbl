@@ -12,6 +12,11 @@
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+  const source = u => {
+    if (!u) return '';
+    const m = /^https:\/\/(?:www\.)?([^/]+)/.exec(u);
+    return m ? ` <a class="muted" href="${esc(u)}" rel="noopener">${esc(m[1])}</a>` : ` <span class="muted">${esc(u)}</span>`;
+  };
   const fix = (v, d = 1) => (v == null || !isFinite(v) ? '–' : v.toFixed(d));
   const team = t => `<span class="team t-${esc(t || 'TBC')}">${esc(t || 'TBC')}</span>`;
   const day = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -214,9 +219,9 @@
       ${s && s.inj ? `<div class="banner"><b>SuperCoach status:</b> ${esc(s.inj)}</div>` : ''}
       <div id="spark" class="card hidden"></div>
       ${events.length || shifts.length || notes.length ? `<h3>News and availability</h3><div class="card feed">
-        ${events.map(e => `<div class="item"><span class="date">${shortDay(e.start)}–${shortDay(e.end)}</span><span><span class="pill no">Unavailable</span> ${esc(e.name)} ${e.verified ? '' : '<span class="pill">dates unverified</span>'}</span></div>`).join('')}
+        ${events.map(e => `<div class="item"><span class="date">${shortDay(e.start)}–${shortDay(e.end)}</span><span>${e.likely ? '<span class="pill warn">Likely out</span>' : '<span class="pill no">Unavailable</span>'} ${esc(e.name)}${e.likely ? ' <span class="muted">(squad not named yet)</span>' : ''} ${e.verified ? '' : '<span class="pill">dates unverified</span>'}</span></div>`).join('')}
         ${shifts.map(s => `<div class="item"><span class="date">${newsDay(s.date)}</span><span>${esc(s.text)}</span></div>`).join('')}
-        ${notes.map(n => `<div class="item"><span class="date">${newsDay(n.date)}</span><span>${esc(n.text)} <span class="muted">${esc(n.source || '')}</span></span></div>`).join('')}
+        ${notes.map(n => `<div class="item"><span class="date">${newsDay(n.date)}</span><span>${esc(n.text)}${source(n.source)}</span></div>`).join('')}
       </div>` : ''}
       ${sq ? `<h3>BBL|16 games</h3>${draftBanner()}<div class="scroll"><table>
         <thead><tr><th class="l">Round</th><th class="l">Matches</th><th>Playing</th></tr></thead>
@@ -535,28 +540,27 @@
       const a = Date.parse(s < startD ? startD : s), b = Date.parse(e > endD ? endD : e) + 864e5;
       return `left:${(100 * (a - t0) / span).toFixed(2)}%;width:${(100 * (b - a) / span).toFixed(2)}%`;
     };
-    const src = e => /^https:\/\//.test(e.source || '') ? ` <a class="muted" href="${esc(e.source)}" rel="noopener">source</a>` : '';
-    const affected = D.availability.links.filter(l => l.pid).map(l => {
-      const ev = evs.find(e => e.id === l.event);
-      const sq = squadOf[l.pid];
-      const games = sq ? Object.values(grid[sq.team]).flat().filter(m => { const d = L.localDate(m.start); return ev.start <= d && d <= ev.end; }) : [];
-      return { ...l, ev, sq, games };
-    });
+    const affected = [...new Set(D.availability.links.filter(l => l.pid).map(l => l.pid))].map(pid => {
+      const sq = squadOf[pid];
+      const out = L.eventsFor(pid, D.availability);
+      const games = sq ? Object.values(grid[sq.team]).flat().filter(m => out.some(e => { const d = L.localDate(m.start); return e.start <= d && d <= e.end; })) : [];
+      return { pid, sq, out, games: games.sort((x, y) => x.start.localeCompare(y.start)) };
+    }).sort((a, b) => b.games.length - a.games.length);
     $app.innerHTML = `
       <h2>Availability</h2>
       <p class="muted">International duty and clashing leagues against the BBL|16 rounds. Hatched bars have dates we haven't confirmed yet.</p>
       <div class="timeline scroll"><div style="min-width:640px">
         <div class="tl-label muted">Rounds</div>
         <div class="tl-row">${D.rounds.rounds.map(r => `<div class="tl-bar k-round" style="${pos(r.start, r.end)}" title="${esc(`${day(r.start)} – ${day(r.end)}`)}">${r.finals ? 'Finals' : 'R' + r.round}</div>`).join('')}</div>
-        ${evs.filter(e => e.kind !== 'injury' && e.end >= startD && e.start <= endD).map(e => `<div class="tl-label">${esc(e.name)} <span class="muted">${shortDay(e.start)}–${shortDay(e.end)}</span> ${e.verified ? '<span class="pill ok">verified</span>' : '<span class="pill">unverified</span>'}${src(e)}</div>
+        ${evs.filter(e => !['injury', 'personal'].includes(e.kind) && e.end >= startD && e.start <= endD).map(e => `<div class="tl-label">${esc(e.name)} <span class="muted">${shortDay(e.start)}–${shortDay(e.end)}</span> ${e.verified ? '<span class="pill ok">verified</span>' : '<span class="pill">unverified</span>'}${source(e.source)}</div>
           <div class="tl-row"><div class="tl-bar k-${esc(e.kind)}${e.verified ? '' : ' unverified'}" style="${pos(e.start, e.end)}"></div></div>`).join('')}
       </div></div>
       <h3>Players affected</h3>
       ${affected.length ? `<div class="scroll"><table>
         <thead><tr><th class="l">Player</th><th class="l">Team</th><th class="l">Reason</th><th>Games missed</th><th class="l">Matches</th></tr></thead>
-        <tbody>${affected.map(a => `<tr><td class="l name">${link(a.pid)}</td><td class="l">${a.sq ? team(a.sq.team) : ''}</td><td class="l">${esc(a.ev.name)}</td>
+        <tbody>${affected.map(a => `<tr><td class="l name">${link(a.pid)}</td><td class="l">${a.sq ? team(a.sq.team) : ''}</td><td class="l">${a.out.map(e => `${esc(e.name)}${e.likely ? ' <span class="pill warn">likely</span>' : ''}`).join('<br>')}</td>
           <td>${a.games.length}</td><td class="l muted">${a.games.map(m => `${a.sq.team === m.home ? 'v' : '@'} ${m.home === a.sq.team ? m.away : m.home} ${shortDay(L.localDate(m.start))}`).join(', ')}</td></tr>`).join('')}</tbody></table></div>` : ''}
-      <p class="muted">Test and overseas-league squads aren't named yet. Players are linked to an event as each squad is announced.</p>`;
+      <p class="muted">"Likely" means the squad isn't named yet: those players were in the last Test squad, and their games still count as missed in the planner.</p>`;
   }
 
   // ---------- roles ----------
@@ -581,7 +585,7 @@
       <p class="muted">Role shifts are detected automatically by comparing each player's last 3 games with their earlier games over the last 3 seasons.</p>
       <div class="card feed">${items.map(i => `<div class="item">
         <span class="date">${newsDay(i.date)}</span>
-        <span>${i.team || (squadOf[i.pid] && squadOf[i.pid].team) ? team(i.team || squadOf[i.pid].team) : ''} ${i.pid ? `<b>${link(i.pid)}</b>` : ''} ${esc(i.text)}</span>
+        <span>${i.team || (squadOf[i.pid] && squadOf[i.pid].team) ? team(i.team || squadOf[i.pid].team) : ''} ${i.pid ? `<b>${link(i.pid)}</b>` : ''} ${esc(i.text)}${source(i.source)}</span>
       </div>`).join('') || '<p class="muted">Nothing here yet.</p>'}</div>`;
   }
 
