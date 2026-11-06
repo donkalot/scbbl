@@ -312,6 +312,19 @@ def test_alerts_turn_on_change_teams_and_turn_off(server, page):
     assert page.evaluate("localStorage.getItem('scbbl-alerts')") is None
 
 
+def test_alerts_explain_a_network_block_page(server, page):
+    # Cisco Umbrella answers for the Worker with a CORS-enabled redirect to an HTML block page that returns 200.
+    page.clock.set_fixed_time('2026-11-05T00:00:00Z')
+    _mock_feeds(page)
+    _fake_push(page)
+    page.route(PUSH_API + '/**', lambda r: r.fulfill(status=200, body='<html>blocked</html>', content_type='text/html',
+                                                     headers={'access-control-allow-origin': '*'}))
+    page.goto(server + '#/matches')
+    page.click('#alert-on')
+    expect(page.locator('#alert-msg')).to_contain_text("Couldn't reach the alerts server")
+    expect(page.locator('#alert-state')).to_have_text('Off')
+
+
 def test_alerts_explain_blocked_and_unsupported_browsers(server, browser):
     for perm, extra, text in [('denied', '', 'Notifications are blocked'),
                               ('default', 'delete window.PushManager;', "can't receive push alerts")]:

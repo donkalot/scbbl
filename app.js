@@ -751,13 +751,16 @@
   }
 
   async function pushApi(path, body) {
+    const blocked = new Error("Couldn't reach the alerts server. Some work and school networks block it, so try on mobile data or at home.");
     let r;
     try {
       r = await fetch(PUSH_API + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
     } catch {
-      throw new Error("Couldn't reach the alerts server. Some work and school networks block it, so try on mobile data or at home.");
+      throw blocked;
     }
-    const out = await r.json().catch(() => ({}));
+    // Network filters answer in the server's place with a redirect to an HTML block page.
+    const out = !r.redirected && /^application\/json/.test(r.headers.get('content-type') || '') ? await r.json().catch(() => null) : null;
+    if (!out) throw blocked;
     if (!r.ok) throw new Error(`The alerts server said: ${out.error || r.status}.`);
     return [r.status, out];
   }
@@ -830,6 +833,7 @@
       msg('Turning on…');
       try {
         const [, { key }] = await pushApi('/vapid');
+        if (typeof key !== 'string') throw new Error('The alerts server sent no key.');
         const s = await pushSubscription(reg, key);
         const [status, out] = await pushApi('/subscribe', { subscription: s.toJSON(), teams });
         localStorage.setItem(ALERTS_KEY, JSON.stringify({ endpoint: s.endpoint, teams: out.teams }));
