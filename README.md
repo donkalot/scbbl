@@ -64,7 +64,7 @@ Cricsheet uses one person id across every competition, so squad players link wit
 
 ## SuperCoach snapshot
 
-SuperCoach can't be fetched by a script, so each round, signed in at supercoach.com.au, open these and save each response into `curated/sc_raw/`:
+SuperCoach can't be fetched by a script, so each round, signed in at supercoach.com.au, save these responses into `curated/sc_raw/`. The quick way is the bookmark on [`tools.html`](https://donkalot.github.io/scbbl/tools.html): click it on any SuperCoach BBL page and it downloads all three files, already named, using your own login. By hand:
 
 | URL (under `https://www.supercoach.com.au/2026/api/bbl/classic/v1/`) | Save as |
 | --- | --- |

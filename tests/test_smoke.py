@@ -348,6 +348,50 @@ def test_pasted_statsplayers_response_imports_the_team(server, page):
     _check_imported(page, server)
 
 
+def _save_bookmark(page, server):
+    from urllib.parse import unquote
+    page.goto(server.replace('index.html', 'tools.html'))
+    href = page.locator('#scsave').get_attribute('href')
+    assert href.startswith('javascript:')
+    return unquote(href[len('javascript:'):])
+
+
+def test_save_prices_bookmark_downloads_the_three_raw_files(server, page):
+    code = _save_bookmark(page, server)
+    raw = ROOT / 'curated' / 'sc_raw'
+    auth = []
+
+    def fake_sc(route):
+        url = route.request.url
+        for key, name in (('settings', 'settings.json'), ('real_fixture', 'fixture.json'), ('players-cf', 'players-round1.json')):
+            if f'/v1/{key}' in url:
+                auth.append(route.request.headers.get('authorization'))
+                return route.fulfill(content_type='application/json', body=(raw / name).read_text(encoding='utf-8'))
+        route.fulfill(content_type='text/html', body="<script>localStorage.setItem('VMLS:news:accessToken', JSON.stringify('tok'));</script>")
+    page.route('https://www.supercoach.com.au/**', fake_sc)
+    page.goto('https://www.supercoach.com.au/2026/bbl/classic/team')
+    got = []
+    page.on('download', lambda d: got.append(d))
+    page.evaluate('c => { (0, eval)(c); }', code)
+    for _ in range(30):
+        if len(got) == 3:
+            break
+        page.wait_for_timeout(100)
+    assert auth == ['Bearer tok'] * 3
+    assert sorted(d.suggested_filename for d in got) == ['fixture.json', 'players-round1.json', 'settings.json']
+    for d in got:
+        name = d.suggested_filename
+        assert json.loads(pathlib.Path(d.path()).read_text(encoding='utf-8')) == json.loads((raw / name).read_text(encoding='utf-8'))
+
+
+def test_save_prices_bookmark_refuses_off_supercoach(server, page):
+    code = _save_bookmark(page, server)
+    msgs = []
+    page.on('dialog', lambda d: (msgs.append(d.message), d.dismiss()))
+    page.evaluate('c => (0, eval)(c)', code)
+    assert msgs == ['Open SuperCoach BBL first, logged in, then click this bookmark.']
+
+
 def test_availability_lists_ruled_out_player(server, page):
     page.goto(server + '#/availability')
     expect(page.locator('#app table tbody tr', has_text='Jason Behrendorff')).to_have_count(1)

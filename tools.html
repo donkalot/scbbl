@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>SC BBL Planner · maintainer tools</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1a202c; background: #f5f7fa; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px 16px; }
+  .pill { display: inline-block; background: #14213d; color: #fff; padding: 4px 12px; border-radius: 999px; text-decoration: none; cursor: grab; }
+  code { background: #edf2f7; padding: 0 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<main id="app">
+  <h2>Save SuperCoach prices</h2>
+  <div class="card">
+    <p>Drag this to your bookmarks bar: <a id="scsave" class="pill" href="#">SC BBL save prices</a></p>
+    <p>On any SuperCoach BBL page, logged in, click it. Your browser downloads <code>settings.json</code>, <code>fixture.json</code> and
+      <code>players-roundN.json</code>, with N the round the prices are for. Allow multiple downloads if Chrome asks.
+      Move the three files into <code>curated/sc_raw/</code>, replacing any with the same name, then run the build and commit.</p>
+  </div>
+</main>
+<script>
+// Runs on supercoach.com.au with the maintainer's own login and downloads the three raw files sc_import reads.
+const code = `(async()=>{try{
+if(location.hostname!=='www.supercoach.com.au')return alert('Open SuperCoach BBL first, logged in, then click this bookmark.');
+const base='/2026/api/bbl/classic/v1/';
+let t=localStorage.getItem('VMLS:news:accessToken');try{const j=JSON.parse(t);t=typeof j=='string'?j:j&&(j.accessToken||j.access_token||j.token)}catch(e){}
+const seen=performance.getEntriesByType('resource').map(e=>e.name).filter(n=>/\\/api\\/bbl\\/classic\\/v1\\/players-cf\\?/.test(n)&&n.includes('player_stats')).pop();
+const get=async u=>{const r=await fetch(u,{headers:t?{Authorization:'Bearer '+t}:{}});if(!r.ok)throw new Error(u.split('?')[0].split('/').pop()+' answered '+r.status+'. Reload the page and try again.');return r.json()};
+const settings=await get(base+'settings?min=false');
+const fixture=await get(base+'real_fixture');
+const players=await get(seen||base+'players-cf?embed=notes%2Codds%2Cplayer_stats%2Cpositions&round=0');
+if(!settings.game||!Array.isArray(fixture)||!Array.isArray(players)||!players.length||!players[0].player_stats)throw new Error('SuperCoach sent something unexpected, so nothing was saved.');
+const round=Math.max(...players.flatMap(p=>p.player_stats.map(s=>s.round)));
+const save=(name,x)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(x)],{type:'application/json'}));a.download=name;document.body.appendChild(a);a.click();a.remove()};
+save('settings.json',settings);save('fixture.json',fixture);save('players-round'+round+'.json',players);
+}catch(e){alert('Save failed: '+e.message)}})()`;
+document.getElementById('scsave').href = 'javascript:' + encodeURIComponent(code.replace(/\n/g, ''));
+document.getElementById('scsave').onclick = e => e.preventDefault();
+</script>
+</body>
+</html>
