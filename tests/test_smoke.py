@@ -234,9 +234,99 @@ def test_matches_list_shows_every_fixture_with_historical_rain(server, page):
     expect(rows).to_have_count(44)
     expect(rows.first.locator('.rain')).to_contain_text('hist.')
     expect(page.locator('#tabs a.on')).to_have_text('Matches')
-    links = page.locator('#alerts a[href^="https://ntfy.sh/scbbl-"]')
-    expect(links).to_have_count(9)
-    expect(links.last).to_have_attribute('href', 'https://ntfy.sh/scbbl-thu')
+    expect(page.locator('#alerts')).to_contain_text('Match alerts')
+    expect(page.locator('#alerts a[href*="ntfy"]')).to_have_count(0)
+
+
+PUSH_API = 'https://scbbl-notify.donkalot.workers.dev'
+FAKE_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/smoke'
+# Headless Chromium can't reach a real push service, so stand in for the service worker's PushManager.
+FAKE_PUSH = """(() => {
+  let perm = %(perm)s, current = null;
+  const pm = {
+    getSubscription: async () => current,
+    subscribe: async o => (current = {
+      endpoint: %(endpoint)s, options: { applicationServerKey: o.applicationServerKey.buffer },
+      toJSON() { return { endpoint: this.endpoint, keys: { p256dh: 'p', auth: 'a' } }; },
+      unsubscribe: async () => { current = null; return true; },
+    }),
+  };
+  Object.defineProperty(navigator, 'serviceWorker', { value: { register: async () => ({}), ready: Promise.resolve({ pushManager: pm }) } });
+  Object.defineProperty(Notification, 'permission', { get: () => perm });
+  Notification.requestPermission = async () => (perm = 'granted');
+  %(extra)s
+})();"""
+
+
+def _fake_push(page, perm='default', extra=''):
+    page.add_init_script(FAKE_PUSH % {'perm': json.dumps(perm), 'endpoint': json.dumps(FAKE_ENDPOINT), 'extra': extra})
+    calls = []
+
+    def api(route):
+        req = route.request
+        path = req.url[len(PUSH_API):]
+        calls.append((path, req.post_data_json if req.method == 'POST' else None))
+        if path == '/vapid':
+            body, status = {'key': 'BA' + 'A' * 85}, 200
+        elif path == '/subscribe':
+            body, status = {'teams': req.post_data_json['teams']}, 201 if len([c for c in calls if c[0] == '/subscribe']) == 1 else 200
+        else:
+            body, status = {}, 200
+        route.fulfill(status=status, body=json.dumps(body), content_type='application/json',
+                      headers={'access-control-allow-origin': '*'})
+    page.route(PUSH_API + '/**', api)
+    return calls
+
+
+def test_alerts_turn_on_change_teams_and_turn_off(server, page):
+    page.clock.set_fixed_time('2026-11-05T00:00:00Z')
+    _mock_feeds(page)
+    _seed(page, [_squad_pid('HEA', 'Jack Wildermuth'), _squad_pid('SCO', 'Mitchell Marsh')])
+    calls = _fake_push(page)
+    page.goto(server + '#/matches')
+    box = lambda v: page.locator(f'#alert-teams input[value="{v}"]')
+    expect(box('HEA')).to_be_checked()
+    expect(box('SCO')).to_be_checked()
+    expect(box('all')).not_to_be_checked()
+    expect(page.locator('#alert-state')).to_have_text('Off')
+    page.click('#alert-on')
+    expect(page.locator('#alert-msg')).to_have_text('Alerts are on. A confirmation notification should arrive now.')
+    expect(page.locator('#alert-state')).to_have_text('On')
+    assert calls[0] == ('/vapid', None)
+    assert calls[1] == ('/subscribe', {'subscription': {'endpoint': FAKE_ENDPOINT, 'keys': {'p256dh': 'p', 'auth': 'a'}},
+                                       'teams': ['HEA', 'SCO']})
+    box('all').check()
+    expect(box('HEA')).not_to_be_checked()
+    page.click('#alert-save')
+    expect(page.locator('#alert-msg')).to_have_text('Saved.')
+    assert calls[-1][1]['teams'] == ['all']
+    box('SIX').check()
+    expect(box('all')).not_to_be_checked()
+    page.click('#alert-squad')
+    expect(box('SIX')).not_to_be_checked()
+    expect(box('HEA')).to_be_checked()
+    page.click('#alert-off')
+    expect(page.locator('#alert-msg')).to_have_text('Alerts are off.')
+    expect(page.locator('#alert-state')).to_have_text('Off')
+    assert calls[-1] == ('/unsubscribe', {'endpoint': FAKE_ENDPOINT, 'auth': 'a'})
+    assert page.evaluate("localStorage.getItem('scbbl-alerts')") is None
+
+
+def test_alerts_explain_blocked_and_unsupported_browsers(server, browser):
+    for perm, extra, text in [('denied', '', 'Notifications are blocked'),
+                              ('default', 'delete window.PushManager;', "can't receive push alerts")]:
+        ctx = browser.new_context(service_workers='block')
+        pg = ctx.new_page()
+        errors = []
+        pg.on('pageerror', lambda e: errors.append(str(e)))
+        pg.clock.set_fixed_time('2026-11-05T00:00:00Z')
+        _mock_feeds(pg)
+        _fake_push(pg, perm, extra)
+        pg.goto(server + '#/matches')
+        expect(pg.locator('#alerts')).to_contain_text(text)
+        expect(pg.locator('#alert-on')).to_have_count(0)
+        assert errors == []
+        ctx.close()
 
 
 def test_match_page_scores_the_replayed_scorecard(server, page):

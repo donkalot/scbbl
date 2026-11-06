@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { run, due, resetCache } from '../src/notify.js';
+import { run, due, resetCache, PUSH_BUDGET } from '../src/notify.js';
+import { parse, subId, PREFIX } from '../src/subs.js';
+import { browser, decrypt, checkVapid, memoryKV, vapidEnv } from './pushkit.js';
 
 const root = new URL('../../', import.meta.url);
 const json = p => JSON.parse(readFileSync(new URL(p, root), 'utf8'));
@@ -11,19 +13,26 @@ const EMPTY = { players: [], fixture: { innings: [] } };
 const HEA_V_SCO = DATA.fixture.find(m => m.id === 40745);
 const START = Date.parse(HEA_V_SCO.start);
 const at = mins => START + mins * 60e3;
-const ENV = { SITE: 'https://site.test', NTFY: 'https://ntfy.test', TOPIC_PREFIX: 'scbbl' };
+const VAPID = await vapidEnv();
+const FCM = 'https://fcm.googleapis.com/fcm/send/';
 
-function world({ card = EMPTY, failTopic = null, forecast = true } = {}) {
-  const kv = new Map();
-  const posts = [];
+// Followers by name: each is a browser subscribed to the listed teams.
+async function world({ card = EMPTY, forecast = true, follow = { all: ['all'], hea: ['HEA'], sco: ['SCO'], six: ['SIX'] } } = {}) {
+  const kv = memoryKV();
+  const browsers = {};
+  for (const [name, teams] of Object.entries(follow)) {
+    const b = await browser(FCM + name);
+    browsers[FCM + name] = { name, ...b };
+    await kv.put(PREFIX + await subId(b.sub.endpoint), '', { metadata: parse({ subscription: b.sub, teams }) });
+  }
+  kv.ops.put = 0;
   const w = {
-    card, failTopic, posts,
-    env: { ...ENV, SENT: { get: async k => kv.get(k) ?? null, put: async (k, v) => { kv.set(k, v); } } },
-    kv,
+    card, kv, pushes: [], status: {}, now: 0,
+    env: { SITE: 'https://site.test', ...VAPID, SENT: kv },
     async fetch(url, opts = {}) {
       const u = String(url);
       const ok = body => ({ ok: true, status: 200, json: async () => body });
-      if (u.startsWith(ENV.SITE + '/data/')) return ok(DATA[u.split('/').pop().replace('.json', '')]);
+      if (u.startsWith('https://site.test/data/')) return ok(DATA[u.split('/').pop().replace('.json', '')]);
       if (u.startsWith('https://apiv2.cricket.com.au/')) return ok(w.card);
       if (u.startsWith('https://api.open-meteo.com/')) {
         if (!forecast) return { ok: false, status: 500 };
@@ -33,15 +42,21 @@ function world({ card = EMPTY, failTopic = null, forecast = true } = {}) {
         }
         return ok({ hourly: { time, precipitation_probability: p, precipitation: mm } });
       }
-      if (u === ENV.NTFY + '/') {
-        const body = JSON.parse(opts.body);
-        if (body.topic === w.failTopic) return { ok: false, status: 429 };
-        posts.push({ ...body, auth: opts.headers.authorization });
-        return { ok: true, status: 200 };
+      if (browsers[u]) {
+        const b = browsers[u];
+        const status = w.status[b.name] ?? 201;
+        if (status === 0) throw new Error('network down');
+        await checkVapid(opts.headers.authorization, u, w.now);
+        w.pushes.push({ to: b.name, status, headers: opts.headers, msg: await decrypt(opts.body, b) });
+        return { ok: status < 300, status };
       }
       throw new Error('unexpected fetch ' + u);
     },
-    tick: mins => run(w.env, at(mins), w.fetch),
+    async tick(mins) {
+      w.now = at(mins);
+      return (await run(w.env, w.now, w.fetch)).map(l => l.split(' ').at(-1));
+    },
+    to: () => w.pushes.filter(p => p.status < 300).map(p => p.to).sort(),
   };
   return w;
 }
@@ -60,44 +75,49 @@ test('windows open at T-60 and T-75 for the XI, there is no T-30, and finals wit
   assert.deepEqual(due(final, Date.parse(final.start) - 45 * 60e3), []);
 });
 
-test('T-60 reminder goes to all, home and away topics once', async () => {
-  const w = world();
+test('T-60 reminder is pushed, encrypted and VAPID-signed, once to each follower of either team', async () => {
+  const w = await world();
   assert.deepEqual(await w.tick(-61), []);
-  const sent = await w.tick(-60);
-  assert.deepEqual(sent, ['40745 t60 scbbl-all', '40745 t60 scbbl-hea', '40745 t60 scbbl-sco']);
-  const p = w.posts[0];
-  assert.equal(p.title, 'HEA v SCO starts in 60 min');
-  assert.match(p.message, /19:15 AEDT at /);
-  assert.match(p.message, /Rain risk: Med \(40% peak/);
-  assert.match(p.message, /XIs are named at the toss/);
-  assert.equal(p.click, 'https://site.test/#/match/40745');
-  assert.equal(p.auth, undefined);
+  assert.deepEqual(await w.tick(-60), ['201', '201', '201']);
+  assert.deepEqual(w.to(), ['all', 'hea', 'sco']);
+  const { msg, headers } = w.pushes[0];
+  assert.equal(msg.title, 'HEA v SCO starts in 60 min');
+  assert.match(msg.body, /19:15 AEDT at /);
+  assert.match(msg.body, /Rain risk: Med \(40% peak/);
+  assert.match(msg.body, /XIs are named at the toss/);
+  assert.equal(msg.url, '#/match/40745');
+  assert.equal(msg.tag, '40745-t60');
+  assert.equal(headers['content-encoding'], 'aes128gcm');
+  assert.equal(headers.ttl, '1800');
+  assert.equal(headers.topic, 'm40745t60');
+  assert.equal(headers.urgency, 'high');
   assert.deepEqual(await w.tick(-59), []);
-  assert.equal(w.posts.length, 3);
+  assert.equal(w.pushes.length, 3);
 });
 
 test('reminder still goes out when the forecast fails, and lists unavailable players', async () => {
-  const w = world({ forecast: false });
+  const w = await world({ forecast: false, follow: { all: ['all'] } });
   DATA.availability = { ...DATA.availability, links: [...DATA.availability.links, { pid: DATA.squads.teams.HEA[0].pid, event: 'aus-nz-t4' }] };
   try {
     await w.tick(-60);
   } finally {
     DATA.availability = json('data/availability.json');
   }
-  assert.doesNotMatch(w.posts[0].message, /Rain risk/);
-  assert.match(w.posts[0].message, new RegExp(`Unavailable: ${DATA.squads.teams.HEA[0].n} \\(HEA\\): Australia v New Zealand, 4th Test`));
+  const body = w.pushes[0].msg.body;
+  assert.doesNotMatch(body, /Rain risk/);
+  assert.match(body, new RegExp(`Unavailable: ${DATA.squads.teams.HEA[0].n} \\(HEA\\): Australia v New Zealand, 4th Test`));
 });
 
 test('XI alert waits for the toss, then names the XIs and who missed out', async () => {
-  const w = world();
+  const w = await world();
   await w.tick(-60);
   assert.deepEqual(await w.tick(-30), []);
   w.card = CARD;
-  const sent = await w.tick(-24);
-  assert.deepEqual(sent, ['40745 xi scbbl-all', '40745 xi scbbl-hea', '40745 xi scbbl-sco']);
-  const p = w.posts.at(-1);
-  assert.equal(p.title, 'HEA v SCO: XIs named');
-  const [hea, sco, toss] = p.message.split('\n\n');
+  assert.equal((await w.tick(-24)).length, 3);
+  const p = w.pushes.at(-1);
+  assert.equal(p.msg.title, 'HEA v SCO: XIs named');
+  assert.equal(p.headers.ttl, String(3 * 3600));
+  const [hea, sco, toss] = p.msg.body.split('\n\n');
   assert.match(hea, /^HEA: .*Jack Wildermuth/);
   assert.match(sco, /^SCO: .*Cooper Connolly/);
   assert.equal(hea.split('\n')[0].split(', ').length, 11);
@@ -107,33 +127,63 @@ test('XI alert waits for the toss, then names the XIs and who missed out', async
 });
 
 test('a reminder after the XI is out drops the toss line', async () => {
-  const w = world({ card: CARD });
+  const w = await world({ card: CARD, follow: { all: ['all'] } });
   await w.tick(-60);
-  assert.equal(w.posts[0].title, 'HEA v SCO: XIs named');
-  assert.doesNotMatch(w.posts.find(p => p.title.includes('60 min')).message, /named at the toss/);
+  assert.equal(w.pushes[0].msg.title, 'HEA v SCO: XIs named');
+  assert.doesNotMatch(w.pushes[1].msg.body, /named at the toss/);
 });
 
-test('a failed topic is retried alone next minute', async () => {
-  const w = world({ failTopic: 'scbbl-hea' });
-  assert.deepEqual(await w.tick(-60), ['40745 t60 scbbl-all', '40745 t60 scbbl-sco']);
-  w.failTopic = null;
-  assert.deepEqual(await w.tick(-59), ['40745 t60 scbbl-hea']);
+test('busy or unreachable push services are retried alone; gone subscriptions are deleted; rejected ones are dropped', async () => {
+  const w = await world({ follow: { busy: ['all'], down: ['all'], gone: ['HEA'], bad: ['SCO'], fine: ['SCO'] } });
+  Object.assign(w.status, { busy: 503, down: 0, gone: 410, bad: 400 });
+  assert.deepEqual((await w.tick(-60)).sort(), ['0', '201', '400', '410', '503']);
+  assert.equal([...w.kv.m.keys()].filter(k => k.startsWith(PREFIX)).length, 4);
+  w.status = {};
+  const before = w.pushes.length;
+  assert.deepEqual(await w.tick(-59), ['201', '201']);
+  assert.deepEqual(w.pushes.slice(before).map(p => p.to).sort(), ['busy', 'down']);
+  assert.deepEqual(await w.tick(-58), []);
 });
 
 test('a missed T-60 window is not sent late', async () => {
-  const w = world();
+  const w = await world();
   assert.deepEqual(await w.tick(-30), []);
-  assert.equal(w.posts.length, 0);
+  assert.equal(w.pushes.length, 0);
 });
 
-test('quiet minutes touch no KV and NTFY_TOKEN is sent as Bearer', async () => {
-  const w = world();
-  let reads = 0;
-  const get = w.env.SENT.get;
-  w.env.SENT.get = k => { reads += 1; return get(k); };
-  await run(w.env, Date.parse('2026-11-05T00:00:00Z'), w.fetch);
-  assert.equal(reads, 0);
-  w.env.NTFY_TOKEN = 'tk_abc';
-  await w.tick(-60);
-  assert.equal(w.posts[0].auth, 'Bearer tk_abc');
+test('quiet minutes touch no KV, and the subscriber list is only read once a message is ready', async () => {
+  const w = await world();
+  w.now = Date.parse('2026-11-05T00:00:00Z');
+  await run(w.env, w.now, w.fetch);
+  assert.deepEqual(w.kv.ops, { get: 0, list: 0, put: 0, delete: 0 });
+  await w.tick(-70);
+  await w.tick(-65);
+  assert.equal(w.kv.ops.list, 0);
+  assert.equal(w.kv.ops.put, 0);
+});
+
+test('a batch is claimed before it is sent, so a failed write loses alerts but never repeats them', async () => {
+  const w = await world({ follow: { all: ['all'] } });
+  const put = w.kv.put;
+  let puts = 0;
+  w.kv.put = async (...a) => { if (++puts === 2) throw new Error('kv down'); return put(...a); };
+  await assert.rejects(w.tick(-60), /kv down/);
+  assert.equal(w.pushes.length, 1);
+  w.kv.put = put;
+  assert.deepEqual(await w.tick(-59), []);
+  assert.equal(w.pushes.length, 1);
+
+  const v = await world({ follow: { all: ['all'] } });
+  v.kv.put = async () => { throw new Error('kv down'); };
+  await assert.rejects(v.tick(-60), /kv down/);
+  assert.equal(v.pushes.length, 0);
+});
+
+test('pushes over the per-tick budget roll over to the next minute', async () => {
+  const follow = Object.fromEntries(Array.from({ length: PUSH_BUDGET + 5 }, (_, i) => [`f${i}`, ['all']]));
+  const w = await world({ follow });
+  assert.equal((await w.tick(-60)).length, PUSH_BUDGET);
+  assert.equal((await w.tick(-59)).length, 5);
+  assert.equal(new Set(w.to()).size, PUSH_BUDGET + 5);
+  assert.deepEqual(await w.tick(-58), []);
 });

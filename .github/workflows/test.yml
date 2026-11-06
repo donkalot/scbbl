@@ -29,7 +29,7 @@ jobs:
           node-version: '22'
       - run: pip install pytest
       - run: pytest -v --ignore=tests/test_smoke.py
-      - run: node --test tests/logic.test.js worker/test/notify.test.js
+      - run: node --test tests/logic.test.js worker/test/notify.test.js worker/test/push.test.js
 
   smoke:
     runs-on: ubuntu-latest

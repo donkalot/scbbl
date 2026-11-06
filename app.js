@@ -714,11 +714,7 @@
     $app.innerHTML = `
       <h2>Matches</h2>
       <div class="row" style="margin-bottom:10px"><a href="#/matches${all ? '' : '?all=1'}"><button class="${all ? 'on' : ''}">Show completed</button></a></div>
-      <details class="card" id="alerts"><summary><b>Get match alerts on your phone</b></summary>
-        <p>Install the free <a href="https://ntfy.sh/">ntfy</a> app (Android or iPhone) and subscribe to a topic. For every match you get a reminder an hour before, with rain risk and unavailable squad players, then both XIs at the toss with who was left out.</p>
-        <div class="row">${['all', ...L.TEAMS].map(t => `<a href="https://ntfy.sh/scbbl-${t.toLowerCase()}" target="_blank" rel="noopener">${t === 'all' ? '<span class="pill">All matches</span>' : team(t)}</a>`).join('')}</div>
-        <p class="muted">Topic names are scbbl-all or scbbl- plus the team code, for example scbbl-hea. Links open the topic in the browser, where you can also subscribe.</p>
-      </details>
+      <div class="card" id="alerts"></div>
       <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match, marked early beyond ${EARLY_DAYS} days because it often changes. Before that it's how often the same window has been wet over the past 10 years. Tap a match for team sheets and live SC points.</p>
       <div class="scroll"><table id="mtable">
         <thead><tr><th class="l">When (AEDT)</th><th class="l">Round</th><th class="l">Match</th><th class="l">Venue</th><th class="l">Rain</th><th class="l">Score</th></tr></thead>
@@ -727,6 +723,7 @@
           <td class="l name"><a href="#/match/${m.id}">${team(m.home)} v ${team(m.away)}</a> <span class="muted">${esc(m.name)}</span></td>
           <td class="l muted">${esc(m.venue ? m.venue.city : 'TBC')}</td><td class="l rain"></td><td class="l status"></td></tr>`).join('')
           || '<tr><td colspan="6" class="l muted">No matches left this season.</td></tr>'}</tbody></table></div>`;
+    renderAlerts();
     const cell = (m, cls) => document.querySelector(`#mtable tr[data-id="${m.id}"] .${cls}`);
     for (const m of list) {
       rainFor(m).then(r => { const el = cell(m, 'rain'); if (el) el.innerHTML = rainPill(r); });
@@ -736,6 +733,122 @@
           if (el) el.innerHTML = `${esc(scoreText(c, m))} <span class="muted">${esc(statusText(c))}</span>`;
         }).catch(() => {});
       }
+    }
+  }
+
+  const PUSH_API = localStorage.getItem('scbbl-push-api') || 'https://scbbl-notify.donkalot.workers.dev';
+  const ALERTS_KEY = 'scbbl-alerts';
+  const pushable = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const appleMobile = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+
+  function alertPrefs() {
+    try { return JSON.parse(localStorage.getItem(ALERTS_KEY)); } catch { return null; }
+  }
+  function squadTeams() {
+    const mine = new Set(mySquad());
+    return L.TEAMS.filter(t => (D.squads.teams[t] || []).some(p => mine.has(p.pid)));
+  }
+
+  async function pushApi(path, body) {
+    let r;
+    try {
+      r = await fetch(PUSH_API + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
+    } catch {
+      throw new Error("Couldn't reach the alerts server. Some work and school networks block it, so try on mobile data or at home.");
+    }
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`The alerts server said: ${out.error || r.status}.`);
+    return [r.status, out];
+  }
+
+  // Reuses this browser's subscription unless it was made with a different server key.
+  async function pushSubscription(reg, key) {
+    const want = unb64u(key);
+    let s = await reg.pushManager.getSubscription();
+    const have = s && s.options && s.options.applicationServerKey && new Uint8Array(s.options.applicationServerKey);
+    if (s && have && (have.length !== want.length || have.some((b, i) => b !== want[i]))) {
+      await s.unsubscribe();
+      s = null;
+    }
+    return s || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: want });
+  }
+
+  async function renderAlerts(note = '') {
+    const el = document.getElementById('alerts');
+    if (!el) return;
+    const intro = `<b>Match alerts</b><p class="muted" style="margin:4px 0 8px">An hour before each match: start time, rain risk and unavailable squad players. At the toss: both XIs and who was left out.</p>`;
+    if (!pushable()) {
+      el.innerHTML = intro + (appleMobile()
+        ? '<p style="margin:0">On iPhone or iPad, tap Share, then <b>Add to Home Screen</b>. Open SC BBL from the Home Screen and turn alerts on there. Needs iOS 16.4 or later.</p>'
+        : '<p class="muted" style="margin:0">This browser can\'t receive push alerts.</p>');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      el.innerHTML = intro + '<p style="margin:0">Notifications are blocked for this site. Allow them in your browser\'s site settings, then reload this page.</p>';
+      return;
+    }
+    el.innerHTML = intro;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    const prefs = alertPrefs();
+    const on = !!(sub && prefs);
+    if (on && prefs.endpoint !== sub.endpoint) {
+      // The browser rotated the subscription; tell the server about the new one.
+      pushApi('/subscribe', { subscription: sub.toJSON(), teams: prefs.teams })
+        .then(() => localStorage.setItem(ALERTS_KEY, JSON.stringify({ ...prefs, endpoint: sub.endpoint }))).catch(() => {});
+    }
+    const sq = squadTeams();
+    const picked = new Set(on ? prefs.teams : sq.length ? sq : ['all']);
+    const box = (v, label) => `<label><input type="checkbox" value="${v}"${picked.has(v) ? ' checked' : ''}> ${label}</label>`;
+    el.innerHTML = intro + `<div class="row" id="alert-teams">${box('all', 'All matches')}${L.TEAMS.map(t => box(t, team(t))).join('')}</div>
+      <div class="row" style="margin-top:8px">
+        ${on ? '<button id="alert-save">Save teams</button><button id="alert-off">Turn off</button>' : '<button class="on" id="alert-on">Turn on alerts</button>'}
+        ${sq.length ? '<button id="alert-squad">Use my squad\'s teams</button>' : ''}
+        <span class="pill${on ? ' ok' : ''}" id="alert-state">${on ? 'On' : 'Off'}</span>
+      </div>
+      <p class="muted" id="alert-msg" style="margin:6px 0 0"></p>`;
+    const msg = t => { el.querySelector('#alert-msg').textContent = t; };
+    msg(note);
+    const boxes = [...el.querySelectorAll('#alert-teams input')];
+    for (const b of boxes) {
+      b.onchange = () => {
+        if (!b.checked) return;
+        for (const o of boxes) if ((b.value === 'all') !== (o.value === 'all')) o.checked = false;
+      };
+    }
+    const chosen = () => boxes.filter(b => b.checked).map(b => b.value);
+    const squadBtn = el.querySelector('#alert-squad');
+    if (squadBtn) squadBtn.onclick = () => { for (const b of boxes) b.checked = sq.includes(b.value); };
+
+    const enable = async () => {
+      const teams = chosen();
+      if (!teams.length) return msg('Pick "All matches" or at least one team.');
+      // Ask first, while the click still counts as a user gesture (Safari requires it).
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return renderAlerts(perm === 'denied' ? '' : 'Alerts need permission to show notifications.');
+      msg('Turning on…');
+      try {
+        const [, { key }] = await pushApi('/vapid');
+        const s = await pushSubscription(reg, key);
+        const [status, out] = await pushApi('/subscribe', { subscription: s.toJSON(), teams });
+        localStorage.setItem(ALERTS_KEY, JSON.stringify({ endpoint: s.endpoint, teams: out.teams }));
+        renderAlerts(status === 201 ? 'Alerts are on. A confirmation notification should arrive now.' : 'Saved.');
+      } catch (e) {
+        msg(e.message || String(e));
+      }
+    };
+    const onBtn = el.querySelector('#alert-on') || el.querySelector('#alert-save');
+    onBtn.onclick = enable;
+    const offBtn = el.querySelector('#alert-off');
+    if (offBtn) {
+      offBtn.onclick = async () => {
+        const { endpoint, keys } = sub.toJSON();
+        await sub.unsubscribe().catch(() => {});
+        localStorage.removeItem(ALERTS_KEY);
+        const told = await pushApi('/unsubscribe', { endpoint, auth: keys && keys.auth }).then(() => true, () => false);
+        renderAlerts(told ? 'Alerts are off.' : 'Alerts are off on this device.');
+      };
     }
   }
 

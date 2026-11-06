@@ -18,21 +18,25 @@ This is an unofficial fan site, not affiliated with SuperCoach, News Corp or Cri
 
 ## Alerts
 
-`worker/` is a Cloudflare Worker that runs every minute and posts to [ntfy](https://ntfy.sh/). Subscribe in the free ntfy app to `scbbl-all`, or to one team, such as `scbbl-hea` or `scbbl-six`. For each league match it sends:
+Turn alerts on from the Matches page, for all matches or chosen teams (it suggests your squad's teams). They're Web Push notifications, so there's no app or account. On iPhone and iPad, add the site to the Home Screen first and turn alerts on from there (iOS 16.4 or later). For each league match it sends:
 
 - **T-60**: start time, venue, rain risk from the forecast, and squad players who are unavailable that day.
 - **XIs named**: both XIs, with captain and keeper marked, the squad players who were left out, and the toss result. It's sent once the cricket.com.au scorecard lists players, which happens at the toss.
 
-A reminder whose window has already passed is skipped, not sent late. What has been sent is recorded per match and topic in KV, so a failed post to one topic is retried the next minute without repeating the others.
+`worker/` is a Cloudflare Worker that runs every minute and is the only thing that can send them: each push is signed with its VAPID key and encrypted to the subscriber (RFC 8291/8292, WebCrypto, no dependencies). It also takes subscriptions. It only accepts pages listed in `ORIGINS` and the Chrome, Firefox, Edge and Apple push services, and stores a subscription only after it accepts a confirmation push. An endpoint must be in its exact canonical form, so one subscription can't be stored twice; re-subscribing it with different keys is refused, and unsubscribing needs its `auth` secret.
+
+A reminder whose window has already passed is skipped, not sent late. Each batch is recorded in KV as sent before it goes out, so a tick that fails part-way can lose an alert but never repeat one. A push that fails with a network error, 429 or 5xx is un-recorded and retried the next minute; a subscription the push service reports as gone is deleted. At most 20 pushes go out per minute (the free plan's 10 ms CPU limit); the rest follow a minute later.
 
 Deploy:
 
 ```
 cd worker
 npx wrangler kv namespace create SENT   # paste the id into wrangler.toml
-npx wrangler secret put NTFY_TOKEN      # optional ntfy access token
+node -e "crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign']).then(k=>crypto.subtle.exportKey('jwk',k.privateKey)).then(j=>process.stdout.write(JSON.stringify(j)))" | npx wrangler secret put VAPID_PRIVATE
 npx wrangler deploy
 ```
+
+Changing `VAPID_PRIVATE` invalidates every subscription; subscribers have to turn alerts on again.
 
 ## Data
 
@@ -91,10 +95,10 @@ python -m pipeline.build
 
 ```
 python -m pytest -q               # pipeline units + Playwright smoke test
-node --test tests/logic.test.js worker/test/notify.test.js   # logic.js, notifier
+node --test tests/logic.test.js worker/test/notify.test.js worker/test/push.test.js   # logic.js, notifier, Web Push
 ```
 
-To try the Worker locally, run `npx wrangler dev --test-scheduled --var SITE:<url> --var NTFY:<url>` and trigger a tick with `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"`.
+To try the Worker locally, run `npx wrangler dev --test-scheduled --var SITE:<url>` and trigger a tick with `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"`.
 
 The smoke test needs `pip install -r tests/requirements.txt` and `playwright install chromium`.
 
@@ -103,9 +107,9 @@ The smoke test needs `pip install -r tests/requirements.txt` and `playwright ins
 ```
 index.html, app.js   UI (hash router, no build step)
 logic.js             pure functions shared by the UI and node tests
-sw.js                network-first service worker (offline fallback)
+sw.js                network-first service worker (offline fallback, push notifications)
 pipeline/            Python 3.12, standard library only
-worker/              ntfy notifier (Cloudflare Worker, cron every minute)
+worker/              Web Push notifier and subscriptions (Cloudflare Worker, cron every minute)
 curated/             hand-edited inputs
 data/                generated, committed
 ```

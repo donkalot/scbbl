@@ -6,13 +6,15 @@ compatibility_date = "2026-10-01"
 crons = ["* * * * *"]
 
 # Create with: wrangler kv namespace create SENT, then paste the id here.
+# Holds what has been sent per match (m:<id>) and the push subscriptions (sub:<hash>).
 [[kv_namespaces]]
 binding = "SENT"
 id = "1036821abe0f4b6b94fe68ee1c1f9f8a"
 
 [vars]
 SITE = "https://donkalot.github.io/scbbl"
-NTFY = "https://ntfy.sh"
-TOPIC_PREFIX = "scbbl"
+VAPID_SUBJECT = "https://donkalot.github.io/scbbl/"
+# Pages allowed to subscribe (exact origins, comma-separated).
+ORIGINS = "https://donkalot.github.io, http://localhost:8000, http://127.0.0.1:8000"
 
-# Optional: wrangler secret put NTFY_TOKEN (an ntfy.sh access token, sent as Bearer).
+# Secret: wrangler secret put VAPID_PRIVATE (an ECDSA P-256 private key as a JWK, see README).
