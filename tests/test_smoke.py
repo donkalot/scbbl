@@ -198,6 +198,7 @@ def test_availability_lists_ruled_out_player(server, page):
 
 
 CA_CARD = ROOT / 'tests' / 'fixtures' / 'ca_scorecard_23768.json'
+CA_COMMENTS = json.loads((ROOT / 'tests' / 'fixtures' / 'ca_comments_23768.json').read_text(encoding='utf-8'))
 HEA_V_SCO = 40745  # BBL|16 fixture the BBL|15 HEA v SCO scorecard is replayed against
 EMPTY_CARD = json.dumps({'players': [], 'fixture': {'innings': []}})
 
@@ -205,7 +206,13 @@ EMPTY_CARD = json.dumps({'players': [], 'fixture': {'innings': []}})
 def _mock_feeds(page, rain_at=None):
     """Replay a finished CA scorecard for HEA v SCO (others pre-toss) and serve a dry forecast."""
     def ca(route):
-        body = CA_CARD.read_text(encoding='utf-8') if f'fixtureId={HEA_V_SCO}' in route.request.url else EMPTY_CARD
+        url = route.request.url
+        if 'views/comments' in url:
+            n = int(re.search(r'inningNumber=(\d)', url)[1])
+            overs = next(i['overs'] for i in CA_COMMENTS if i['inningNumber'] == n) if f'fixtureId={HEA_V_SCO}' in url else []
+            body = json.dumps({'inning': {'overs': overs}, 'nextPage': ''})
+        else:
+            body = CA_CARD.read_text(encoding='utf-8') if f'fixtureId={HEA_V_SCO}' in url else EMPTY_CARD
         route.fulfill(body=body, content_type='application/json', headers={'access-control-allow-origin': '*'})
 
     def meteo(route):
@@ -242,14 +249,14 @@ def test_match_page_scores_the_replayed_scorecard(server, page):
     def row_of(n):
         return page.locator('#live tbody tr').filter(has=page.locator('td.name', has_text=n))
     row = row_of('Jack Wildermuth')
-    expect(row.locator('td.sc')).to_have_text('182')
-    expect(row_of('Cooper Connolly').locator('td.sc')).to_have_text('118')
+    expect(row.locator('td.sc')).to_have_text('179')
+    expect(row_of('Cooper Connolly').locator('td.sc')).to_have_text('114')
     expect(page.locator('#live h3')).to_have_count(2)
-    expect(page.locator('#mtotal')).to_have_text('182')
+    expect(page.locator('#mtotal')).to_have_text('179')
     row.locator('button[data-cap]').click()
-    expect(row.locator('td.sc')).to_have_text('364 ×2')
-    expect(page.locator('#mtotal')).to_have_text('364')
-    expect(page.locator('#rtotal')).to_have_text('364')
+    expect(row.locator('td.sc')).to_have_text('358 ×2')
+    expect(page.locator('#mtotal')).to_have_text('358')
+    expect(page.locator('#rtotal')).to_have_text('358')
 
 
 def test_planner_marks_forecast_rain_for_teams_and_my_squad(server, page):
@@ -291,6 +298,8 @@ def test_live_match_polls_until_you_leave(server, page):
     hits = []
 
     def ca(route):
+        if 'views/comments' in route.request.url:
+            return route.fallback()
         if f'fixtureId={HEA_V_SCO}' in route.request.url:
             hits.append(route.request.url)
         route.fulfill(body=json.dumps(live), content_type='application/json', headers={'access-control-allow-origin': '*'})

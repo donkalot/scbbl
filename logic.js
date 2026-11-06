@@ -204,7 +204,18 @@
 
   // cricket.com.au views/scorecard -> one line per player in the XIs, shaped like the Cricsheet lines.
   // CA names a single run-out fielder, so every run-out it lists counts as solo.
-  function caLines(card) {
+  // CA's dotBalls counts legal balls the batter didn't score off, byes and leg-byes included; SuperCoach's
+  // dots exclude them. Counts those balls per bowler from CA ball-by-ball (views/comments) overs.
+  function byeDots(balls) {
+    const out = {};
+    for (const b of balls || []) {
+      if (b.bowlerPlayerId == null || b.isWide || b.isNoBall || b.runsScored) continue;
+      if ((b.runsByes || 0) + (b.runsLegByes || 0) > 0) out[b.bowlerPlayerId] = (out[b.bowlerPlayerId] || 0) + 1;
+    }
+    return out;
+  }
+
+  function caLines(card, byes = {}) {
     const lines = new Map();
     for (const p of card.players || []) {
       lines.set(p.id, {
@@ -230,7 +241,7 @@
       for (const w of inn.bowlers || []) {
         const l = lines.get(w.playerId);
         if (!l) continue;
-        Object.assign(l, { lb: w.totalBallsBowled, rc: w.runsConceded, wk: w.wicketsTaken, dots: w.dotBalls, mdn: w.maidensBowled,
+        Object.assign(l, { lb: w.totalBallsBowled, rc: w.runsConceded, wk: w.wicketsTaken, dots: w.dotBalls - (byes[w.playerId] || 0), mdn: w.maidensBowled,
                            wd: w.wideBalls, nb: w.noBalls, bowling: !!(w.isOnStrike || w.isNonStrike) });
       }
     }
@@ -275,5 +286,5 @@
   }
 
   return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, slotFit, fitting, sparkPath, venueSplits, playerLog,
-           sumAggs, aggLine, battingText, bowlingText, scPoints, caLines, rainRisk, climateRisk, windowHours, matchPid };
+           sumAggs, aggLine, battingText, bowlingText, scPoints, byeDots, caLines, rainRisk, climateRisk, windowHours, matchPid };
 });

@@ -641,6 +641,40 @@
     return p;
   }
 
+  // Overs come newest first, 10 a page. Overs before the last one seen are final, so each poll only
+  // refetches pages back to that over; a finished innings is never refetched.
+  const COMMENTS = 'https://apiv2.cricket.com.au/web/views/comments?jsconfig=eccn%3Atrue&format=json';
+  const byeCache = {};
+  async function byes(id, c) {
+    const innings = (c.fixture && c.fixture.innings) || [];
+    const cache = byeCache[id] || (byeCache[id] = {});
+    for (const [i, inn] of innings.entries()) {
+      const k = cache[inn.inningNumber] || (cache[inn.inningNumber] = { overs: {}, seen: 0, done: false });
+      if (k.done) continue;
+      let url = `${COMMENTS}&fixtureId=${id}&inningNumber=${inn.inningNumber}`;
+      let top = 0;
+      while (url) {
+        const j = await json(url);
+        const overs = (j.inning && j.inning.overs) || [];
+        for (const o of overs) k.overs[o.overNumber] = L.byeDots(o.balls);
+        top = Math.max(top, ...overs.map(o => o.overNumber));
+        const low = Math.min(...overs.map(o => o.overNumber));
+        url = j.nextPage && overs.length && low > 1 && low > k.seen ? `https://apiv2.cricket.com.au/web${j.nextPage}&jsconfig=eccn%3Atrue` : null;
+      }
+      k.seen = top;
+      k.done = !!(c.fixture && c.fixture.isCompleted) || i < innings.length - 1;
+    }
+    const out = {};
+    for (const k of Object.values(cache)) for (const o of Object.values(k.overs)) for (const [b, n] of Object.entries(o)) out[b] = (out[b] || 0) + n;
+    return out;
+  }
+  // The scorecard plus bye-dot counts; without the ball-by-ball the dots are CA's own (byes included).
+  async function scored(id) {
+    const c = await card(id);
+    const b = await byes(id, c).catch(() => null);
+    return { c, byes: b || {}, byesOk: !!b };
+  }
+
   const teamCode = (c, m, teamId) => (teamId === (c.fixture || {}).homeTeamId ? m.home : m.away);
   function scoreText(c, m) {
     return ((c.fixture && c.fixture.innings) || [])
@@ -651,8 +685,9 @@
     return f.resultText || (f.isLive || f.isInProgress ? 'Live' : f.tossResult || '');
   }
 
-  function cardLines(c, m, ids, table) {
-    return L.caLines(c).map(l => {
+  function cardLines(s, m, ids, table) {
+    const c = s.c;
+    return L.caLines(c, s.byes).map(l => {
       const code = teamCode(c, m, l.team);
       return { ...l, code, pid: L.matchPid(l, ids, D.squads.teams[code] || []), sc: L.scPoints(l, table) };
     });
@@ -768,17 +803,18 @@
     async function roundTotal(lines, cap) {
       let t = squadTotal(lines, cap);
       for (const x of others) {
-        const p = !near(x) && done[x.id] ? done[x.id] : (done[x.id] = card(x.id).catch(() => null));
-        const c = await p;
-        if (c) t += squadTotal(cardLines(c, x, ids, table), cap);
+        const p = !near(x) && done[x.id] ? done[x.id] : (done[x.id] = scored(x.id).catch(() => null));
+        const sx = await p;
+        if (sx) t += squadTotal(cardLines(sx, x, ids, table), cap);
       }
       return t;
     }
 
-    function draw(c) {
+    function draw(s) {
       const el = document.getElementById('live');
       if (!el || token !== view) return;
-      const lines = cardLines(c, m, ids, table);
+      const c = s.c;
+      const lines = cardLines(s, m, ids, table);
       const cap = captains()[rkey];
       const score = scoreText(c, m), status = statusText(c);
       el.innerHTML = `
@@ -787,7 +823,7 @@
           <div class="stats"><div class="stat"><span class="muted">My squad, this match</span><b id="mtotal">${squadTotal(lines, cap)}</b></div>
             <div class="stat"><span class="muted">My squad, ${r ? (r.finals ? 'finals' : 'round ' + r.round) : 'round'} so far</span><b id="rtotal">…</b></div></div>
           ${[m.home, m.away].map(t => xiTable(lines, t, cap, r && r.round, !(c.fixture && c.fixture.isCompleted))).join('')}
-          <p class="muted">Unofficial: SC points computed from the cricket.com.au scorecard with the published scoring table. The official SuperCoach score can differ. A run-out is credited in full to the one fielder cricket.com.au names.${near(m) && !(c.fixture && c.fixture.isCompleted) ? ' Updates every 30 seconds.' : ''}</p>`
+          <p class="muted">Unofficial: SC points computed from the cricket.com.au scorecard with the published scoring table. The official SuperCoach score can differ. A run-out is credited in full to the one fielder cricket.com.au names.${s.byesOk ? '' : " Couldn't load the ball-by-ball, so bowlers' dot balls include byes and leg-byes and may score a little high."}${near(m) && !(c.fixture && c.fixture.isCompleted) ? ' Updates every 30 seconds.' : ''}</p>`
         : teamSheets(m)}`;
       if (lines.length) {
         roundTotal(lines, cap).then(t => { const x = document.getElementById('rtotal'); if (x && token === view) x.textContent = t; });
@@ -798,14 +834,14 @@
       if (token !== view) return;
       if (!last || document.visibilityState === 'visible') {
         try {
-          last = await card(m.id);
+          last = await scored(m.id);
           draw(last);
         } catch (err) {
           const el = document.getElementById('live');
           if (el && !last && token === view) el.innerHTML = `<div class="card">Couldn't load the scorecard from cricket.com.au (${esc(err.message)}).${near(m) ? ' Retrying every 30 seconds.' : ''}</div>`;
         }
       }
-      if (token === view && near(m) && !(last && last.fixture && last.fixture.isCompleted)) timer = setTimeout(tick, 30e3);
+      if (token === view && near(m) && !(last && last.c.fixture && last.c.fixture.isCompleted)) timer = setTimeout(tick, 30e3);
     }
 
     $app.onclick = e => {
