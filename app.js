@@ -529,10 +529,13 @@
   // ---------- availability ----------
   function viewAvailability() {
     const evs = D.availability.events.slice().sort((a, b) => a.start.localeCompare(b.start));
-    const startD = [D.rounds.rounds[0].start, ...evs.map(e => e.start)].sort()[0];
-    const endD = [D.rounds.rounds[D.rounds.rounds.length - 1].end, ...evs.map(e => e.end)].sort().pop();
+    const startD = D.rounds.rounds[0].start, endD = D.rounds.rounds[D.rounds.rounds.length - 1].end;
     const t0 = Date.parse(startD), span = Date.parse(endD) + 864e5 - t0;
-    const pos = (s, e) => `left:${(100 * (Date.parse(s) - t0) / span).toFixed(2)}%;width:${(100 * (Date.parse(e) + 864e5 - Date.parse(s)) / span).toFixed(2)}%`;
+    const pos = (s, e) => {
+      const a = Date.parse(s < startD ? startD : s), b = Date.parse(e > endD ? endD : e) + 864e5;
+      return `left:${(100 * (a - t0) / span).toFixed(2)}%;width:${(100 * (b - a) / span).toFixed(2)}%`;
+    };
+    const src = e => /^https:\/\//.test(e.source || '') ? ` <a class="muted" href="${esc(e.source)}" rel="noopener">source</a>` : '';
     const affected = D.availability.links.filter(l => l.pid).map(l => {
       const ev = evs.find(e => e.id === l.event);
       const sq = squadOf[l.pid];
@@ -545,7 +548,7 @@
       <div class="timeline scroll"><div style="min-width:640px">
         <div class="tl-label muted">Rounds</div>
         <div class="tl-row">${D.rounds.rounds.map(r => `<div class="tl-bar k-round" style="${pos(r.start, r.end)}" title="${esc(`${day(r.start)} – ${day(r.end)}`)}">${r.finals ? 'Finals' : 'R' + r.round}</div>`).join('')}</div>
-        ${evs.map(e => `<div class="tl-label">${esc(e.name)} <span class="muted">${shortDay(e.start)}–${shortDay(e.end)}</span> ${e.verified ? '<span class="pill ok">verified</span>' : '<span class="pill">unverified</span>'}</div>
+        ${evs.filter(e => e.kind !== 'injury' && e.end >= startD && e.start <= endD).map(e => `<div class="tl-label">${esc(e.name)} <span class="muted">${shortDay(e.start)}–${shortDay(e.end)}</span> ${e.verified ? '<span class="pill ok">verified</span>' : '<span class="pill">unverified</span>'}${src(e)}</div>
           <div class="tl-row"><div class="tl-bar k-${esc(e.kind)}${e.verified ? '' : ' unverified'}" style="${pos(e.start, e.end)}"></div></div>`).join('')}
       </div></div>
       <h3>Players affected</h3>
