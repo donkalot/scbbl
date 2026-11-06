@@ -42,6 +42,10 @@ npx wrangler deploy
 
 Changing `VAPID_PRIVATE` invalidates every subscription; subscribers have to turn alerts on again.
 
+## Visit counts
+
+The live site counts visits with GoatCounter (`scbbl.goatcounter.com`), with no cookies. It sends only the page name (`/team`, `/planner` and so on), never the rest of the URL, which can hold an imported SuperCoach team. Nothing is counted off `donkalot.github.io`.
+
 ## Data
 
 | What | Source | Where |

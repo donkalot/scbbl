@@ -1209,6 +1209,24 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     await tick();
   }
 
+  // Sends the page name only; the rest of the hash can hold a SuperCoach team.
+  const PAGES = ['players', 'player', 'planner', 'team', 'availability', 'matches', 'match', 'roles'];
+  let counted;
+  function countVisit(page) {
+    if (location.hostname !== 'donkalot.github.io') return;
+    counted = '/' + page;
+    if (window.goatcounter && window.goatcounter.count) return window.goatcounter.count({ path: counted });
+    if (document.getElementById('goatcounter')) return;
+    const s = document.createElement('script');
+    s.id = 'goatcounter';
+    s.async = true;
+    s.src = 'https://gc.zgo.at/count.js';
+    s.dataset.goatcounter = 'https://scbbl.goatcounter.com/count';
+    s.dataset.goatcounterSettings = JSON.stringify({ no_onload: true });
+    s.onload = () => window.goatcounter && window.goatcounter.count && window.goatcounter.count({ path: counted });
+    document.head.appendChild(s);
+  }
+
   // ---------- router ----------
   async function route() {
     view += 1;
@@ -1217,6 +1235,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     const [path, query] = (location.hash || '#/').slice(1).split('?');
     const params = new URLSearchParams(query || '');
     const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+    countVisit(PAGES.includes(parts[0]) ? parts[0] : 'players');
     const tab = { player: 'players', match: 'matches' }[parts[0]] || parts[0] || 'players';
     document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
     try {

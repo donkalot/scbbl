@@ -348,6 +348,27 @@ def test_pasted_statsplayers_response_imports_the_team(server, page):
     _check_imported(page, server)
 
 
+def test_visit_counts_send_the_page_name_only(page):
+    def site(route):
+        rel = route.request.url.split('/scbbl/', 1)[1].split('#')[0].split('?')[0] or 'index.html'
+        f = ROOT / rel
+        if not f.is_file():
+            return route.fulfill(status=404, body='')
+        route.fulfill(body=f.read_bytes(), content_type={'.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml'}.get(f.suffix, 'text/html'))
+    page.route('https://donkalot.github.io/scbbl/**', site)
+    page.route('https://gc.zgo.at/count.js', lambda r: r.fulfill(content_type='text/javascript', body="""
+        const me = document.currentScript;
+        window.counts = [[me.dataset.goatcounter, JSON.parse(me.dataset.goatcounterSettings).no_onload]];
+        window.goatcounter = { count: v => window.counts.push(v.path) };"""))
+    page.route(re.compile(r'https://(api\.open-meteo\.com|apiv2\.cricket\.com\.au)/.*'), lambda r: r.abort())
+    page.goto('https://donkalot.github.io/scbbl/#/team?r=1&sc=98:true,8:vice')
+    expect(page.locator('#import')).to_be_visible()
+    page.goto('https://donkalot.github.io/scbbl/#/planner')
+    page.click('#tabs a[data-tab=roles]')
+    page.wait_for_function('window.counts && window.counts.length >= 4')
+    assert page.evaluate('window.counts') == [['https://scbbl.goatcounter.com/count', True], '/team', '/planner', '/roles']
+
+
 def _save_bookmark(page, server):
     from urllib.parse import unquote
     page.goto(server.replace('index.html', 'tools.html'))
