@@ -58,6 +58,7 @@ def _squad_pid(team, name):
 @pytest.mark.parametrize('hash_, heading', [
     ('#/players', 'Players'),
     ('#/planner', 'Doubles and byes'),
+    ('#/team', 'Team'),
     ('#/availability', 'Availability'),
     ('#/roles', 'Roles and news'),
 ])
@@ -135,6 +136,60 @@ def test_squad_add_shows_in_planner(server, page):
     expect(row.locator('button[data-squad]')).to_have_text('✓')
     page.goto(server + '#/planner')
     expect(page.locator('#app table').nth(1).locator('tbody tr', has_text='Mitchell Marsh')).to_have_count(1)
+
+
+def _sc_players():
+    return json.loads((ROOT / 'data' / 'sc.json').read_text(encoding='utf-8'))['players']
+
+
+def _seed(page, pids):
+    page.add_init_script(f"localStorage.setItem('scbbl-squad', JSON.stringify({json.dumps(pids)}))")
+
+
+def test_team_flags_a_squad_with_too_many_bowlers(server, page):
+    sc = _sc_players()
+    bowlers = [pid for pid, p in sc.items() if p['pos'] == ['BWL']][:9]
+    _seed(page, bowlers)
+    page.goto(server + '#/team')
+    expect(page.locator('.stat').first).to_contain_text('9/17')
+    cost = sum(sc[pid]['price'] for pid in bowlers)
+    expect(page.locator('.stat').nth(1)).to_contain_text(f"${cost / 1000:.1f}k")
+    expect(page.locator('#problems')).to_contain_text('No seat for')
+    rows = page.locator('#team tbody tr')
+    expect(rows).to_have_count(18)
+    expect(rows.filter(has_text='Open')).to_have_count(9)
+
+
+def test_team_fills_an_open_seat_within_budget(server, page):
+    _seed(page, [])
+    page.goto(server + '#/team')
+    page.locator('#team tbody tr', has_text='WKP').first.locator('a', has_text='Pick').click()
+    opts = page.locator('#opts tbody tr')
+    expect(opts.first).to_be_visible()
+    for i in range(opts.count()):
+        assert 'WKP' in opts.nth(i).locator('td').nth(3).inner_text()
+    pick = opts.first.locator('td.name a').inner_text()
+    opts.first.locator('button[data-in]').click()
+    expect(page.locator('#picker')).to_have_count(0)
+    expect(page.locator('.stat').first).to_contain_text('1/17')
+    expect(page.locator('#team tbody tr', has_text=pick).locator('td').first).to_have_text('WKP')
+
+
+def test_team_trade_swaps_within_the_money_left(server, page):
+    sc = _sc_players()
+    marsh = _squad_pid('SCO', 'Mitchell Marsh')
+    _seed(page, [marsh])
+    page.goto(server + '#/team')
+    page.locator('#team tbody tr', has_text='Mitchell Marsh').locator('a', has_text='Trade').click()
+    expect(page.locator('#picker')).to_contain_text('Trade out Mitchell Marsh')
+    page.click('#picker a:has-text("Cheapest")')
+    opts = page.locator('#opts tbody tr')
+    expect(opts.first.locator('td').nth(4)).to_have_text(f"${min(p['price'] for pid, p in sc.items() if pid != marsh) / 1000:.1f}k")
+    pick = opts.first.locator('td.name a').inner_text()
+    opts.first.locator('button[data-in]').click()
+    expect(page.locator('#team tbody tr', has_text='Mitchell Marsh')).to_have_count(0)
+    expect(page.locator('#team tbody tr', has_text=pick)).to_have_count(1)
+    expect(page.locator('.stat').first).to_contain_text('1/17')
 
 
 def test_availability_lists_ruled_out_player(server, page):

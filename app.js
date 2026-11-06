@@ -75,7 +75,7 @@
     return D.rounds.draft ? `<div class="banner"><b>Draft rounds.</b> ${esc(D.rounds.note)}</div>` : '';
   }
   const sc = pid => (D.sc && D.sc.players[pid]) || null;
-  const price = v => `$${(v / 1000).toFixed(1)}k`;
+  const price = v => `${v < 0 ? '−' : ''}$${(Math.abs(v) / 1000).toFixed(1)}k`;
   function scNote() {
     if (!D.sc) return '<p class="muted">No SuperCoach prices yet.</p>';
     const r = D.rounds.rounds.find(x => x.round === D.sc.round);
@@ -419,6 +419,113 @@
     }
   }
 
+  // ---------- team ----------
+  function viewTeam(params) {
+    if (!D.sc) {
+      $app.innerHTML = '<h2>Team</h2><div class="card">No SuperCoach prices yet, so the cap and positions can\'t be checked.</div>';
+      return;
+    }
+    const rules = D.sc.rules;
+    const mine = mySquad();
+    const seat = pid => ({ pid, pos: sc(pid).pos, price: sc(pid).price });
+    const squad = mine.filter(sc).map(seat);
+    const notSc = mine.filter(pid => !sc(pid));
+    const fit = L.slotFit(squad, rules.positions);
+    const cost = squad.reduce((s, p) => s + p.price, 0);
+    const left = rules.cap - cost;
+    const open = fit.slots.filter(s => !s.pid);
+    const pool = Object.keys(D.sc.players).filter(pid => !mine.includes(pid)).map(seat);
+    const cheapest = Math.min(...pool.map(p => p.price));
+    const today = L.localDate(new Date().toISOString());
+    const next = leagueRounds.find(r => r.end >= today) || leagueRounds[leagueRounds.length - 1];
+    const games = pid => {
+      const r = rounds16(pid);
+      const n = x => (r[x.round] ? r[x.round].available : 0);
+      return { next: n(next), rest: leagueRounds.filter(x => x.round >= next.round).reduce((s, x) => s + n(x), 0) };
+    };
+    const inj = pid => (sc(pid).inj ? ` <span class="pill no">${esc(sc(pid).inj)}</span>` : '');
+    const posText = pid => esc(sc(pid).pos.join('/'));
+
+    const out = squad.some(p => p.pid === params.get('out')) ? params.get('out') : null;
+    const pick = !out && open.some(s => s.pos === params.get('pick')) ? params.get('pick') : null;
+    const sort = params.get('sort') || 'proj';
+    let picker = '';
+    if (out || pick) {
+      // A pick must leave at least the cheapest price for every other open seat.
+      const budget = out ? left + sc(out).price : left - (open.length - 1) * cheapest;
+      const base = out ? squad.filter(p => p.pid !== out) : squad;
+      const opts = L.fitting(base, pool, rules.positions, budget)
+        .filter(p => out || pick === 'FLX' || p.pos.includes(pick))
+        .map(p => ({ ...p, proj: proj(p.pid), g: games(p.pid) }));
+      const keys = {
+        proj: p => p.proj ?? -1,
+        total: p => (p.proj ?? 0) * p.g.rest,
+        cheap: p => -p.price,
+      };
+      opts.sort((a, b) => keys[sort](b) - keys[sort](a));
+      const outProj = out ? proj(out) : null;
+      const qs = out ? `out=${encodeURIComponent(out)}` : `pick=${pick}`;
+      picker = `<div class="card" id="picker">
+        <b>${out ? `Trade out ${esc(name(out))}` : `Fill the open ${pick} seat`}</b>
+        <span class="muted">· up to ${price(budget)}${out ? '' : open.length > 1 ? `, keeping ${price(cheapest)} for each of the other ${open.length - 1} open seats` : ''} · <a href="#/team">close</a></span>
+        <div class="row" style="margin:8px 0">Sort: ${[['proj', 'Proj'], ['total', 'Proj × games left'], ['cheap', 'Cheapest']].map(([k, t]) =>
+          `<a href="#/team?${qs}&sort=${k}"${k === sort ? ' style="font-weight:700"' : ''}>${t}</a>`).join(' · ')}</div>
+        ${opts.length ? `<div class="scroll"><table id="opts">
+          <thead><tr><th></th><th class="l">Player</th><th class="l">Team</th><th class="l">Pos</th><th>Price</th><th>Proj</th>${out ? '<th>Gain</th>' : ''}<th>R${next.round}</th><th>Games left</th></tr></thead>
+          <tbody>${opts.slice(0, 20).map(p => `<tr><td><button data-in="${esc(p.pid)}"${out ? ` data-out="${esc(out)}"` : ''}>${out ? 'Swap' : 'Add'}</button></td>
+            <td class="l name">${link(p.pid)}${inj(p.pid)}</td><td class="l">${team(squadOf[p.pid] && squadOf[p.pid].team)}</td><td class="l">${posText(p.pid)}</td>
+            <td>${price(p.price)}</td><td>${fix(p.proj)}</td>${out ? `<td>${p.proj != null && outProj != null ? (p.proj >= outProj ? '+' : '') + fix(p.proj - outProj) : '–'}</td>` : ''}
+            <td>${p.g.next}</td><td>${p.g.rest}</td></tr>`).join('')}</tbody></table></div>`
+          : budget < cheapest ? `<p>Not enough money: the cheapest player is ${price(cheapest)}. Trade someone out for a cheaper player first.</p>`
+          : '<p>Nobody fits that budget and still leaves everyone a seat.</p>'}
+      </div>`;
+    }
+
+    const problems = [
+      left < 0 && `Over the cap by ${price(-left)}.`,
+      fit.unplaced.length && `No seat for ${fit.unplaced.map(name).join(', ')}: SuperCoach allows ${Object.entries(rules.positions).map(([p, r]) => `${r.squad} ${p}`).join(', ')}.`,
+      notSc.length && `Not in SuperCoach: ${notSc.map(name).join(', ')}. They don't count here.`,
+    ].filter(Boolean);
+    const row = (slot, pid) => {
+      if (!pid) return `<tr class="open"><td class="l"><b>${slot}</b></td><td class="l muted" colspan="7">Open</td>
+        <td class="l"><a href="#/team?pick=${slot}">Pick</a></td></tr>`;
+      const g = games(pid);
+      return `<tr${pid === out ? ' style="background:var(--warn-bg)"' : ''}><td class="l"><b>${slot}</b></td><td class="l name">${link(pid)}${inj(pid)}</td>
+        <td class="l">${team(squadOf[pid] && squadOf[pid].team)}</td><td class="l">${posText(pid)}</td><td>${price(sc(pid).price)}</td><td>${fix(proj(pid))}</td>
+        <td>${g.next}</td><td>${g.rest}</td>
+        <td class="l"><a href="#/team?out=${encodeURIComponent(pid)}">Trade</a> ${squadButton(pid).replace('<button', '<button data-rerender="1"')}</td></tr>`;
+    };
+
+    $app.innerHTML = `
+      <h2>Team</h2>
+      ${scNote()}
+      <div class="stats">
+        <div class="stat"><span class="muted">Players</span><b>${squad.length}/${rules.squad}</b></div>
+        <div class="stat"><span class="muted">Cost</span><b>${price(cost)}</b></div>
+        <div class="stat"><span class="muted">Left of ${price(rules.cap)}</span><b id="left"${left < 0 ? ' style="color:#c53030"' : ''}>${price(left)}</b></div>
+        <div class="stat"><span class="muted">Per open seat</span><b>${open.length ? price(left / open.length) : '–'}</b></div>
+      </div>
+      ${problems.length ? `<div class="banner" id="problems">${problems.map(esc).join('<br>')}</div>` : ''}
+      ${picker}
+      <div class="scroll"><table id="team">
+        <thead><tr><th class="l">Seat</th><th class="l">Player</th><th class="l">Team</th><th class="l">Pos</th><th>Price</th><th>Proj</th><th>R${next.round}</th><th>Games left</th><th></th></tr></thead>
+        <tbody>${fit.slots.map(s => row(s.pos, s.pid)).join('')}${fit.unplaced.map(pid => row('–', pid)).join('')}</tbody>
+      </table></div>
+      <p class="muted">SuperCoach squads are ${rules.squad} players under ${price(rules.cap)}: ${Object.entries(rules.positions).map(([p, r]) => `${r.squad} ${p}`).join(', ')}, where FLX can be anyone.
+        A dual-position player sits wherever leaves room for the rest. Games are from round ${next.round} on, after listed clashes. Proj is the last-two-seasons SC average.
+        This uses the same squad as the Players and Planner tabs, saved on this device only.</p>`;
+
+    $app.onclick = e => {
+      const b = e.target.closest('[data-in]');
+      if (!b) return;
+      const s = mySquad();
+      const i = b.dataset.out ? s.indexOf(b.dataset.out) : -1;
+      if (i >= 0) s[i] = b.dataset.in; else s.push(b.dataset.in);
+      localStorage.setItem(SQUAD_KEY, JSON.stringify(s));
+      if (location.hash === '#/team') route(); else go('#/team');
+    };
+  }
+
   // ---------- availability ----------
   function viewAvailability() {
     const evs = D.availability.events.slice().sort((a, b) => a.start.localeCompare(b.start));
@@ -727,6 +834,7 @@
       if (parts[0] === 'matches') return viewMatches(params);
       if (parts[0] === 'match' && parts[1]) return await viewMatch(parts[1]);
       if (parts[0] === 'planner') return viewPlanner(params);
+      if (parts[0] === 'team') return viewTeam(params);
       if (parts[0] === 'availability') return viewAvailability();
       if (parts[0] === 'roles') return viewRoles(params);
       return viewPlayers(params);

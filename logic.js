@@ -85,6 +85,34 @@
       .slice(0, n);
   }
 
+  // Seats players [{pid, pos}] in SC's squad slots. Own positions come first (augmenting paths, so a WKP/BAT
+  // can move to free a BAT seat); the FLX seats then take anyone left over.
+  function slotFit(players, positions) {
+    const slots = [];
+    for (const [pos, r] of Object.entries(positions)) if (pos !== 'FLX') for (let i = 0; i < r.squad; i++) slots.push({ pos, pid: null });
+    const holder = slots.map(() => -1);
+    const place = (i, seen) => {
+      for (let s = 0; s < slots.length; s++) {
+        if (seen[s] || !players[i].pos.includes(slots[s].pos)) continue;
+        seen[s] = true;
+        if (holder[s] < 0 || place(holder[s], seen)) { holder[s] = i; return true; }
+      }
+      return false;
+    };
+    const left = players.map((_, i) => i).filter(i => !place(i, []));
+    holder.forEach((i, s) => { if (i >= 0) slots[s].pid = players[i].pid; });
+    for (let i = 0; i < ((positions.FLX && positions.FLX.squad) || 0); i++) {
+      const p = left.shift();
+      slots.push({ pos: 'FLX', pid: p == null ? null : players[p].pid });
+    }
+    return { slots, unplaced: left.map(i => players[i].pid) };
+  }
+
+  // Pool players [{pid, pos, price}] within budget who still leave every squad member a seat.
+  function fitting(squad, pool, positions, budget) {
+    return pool.filter(p => p.price <= budget && slotFit([...squad, p], positions).unplaced.length === 0);
+  }
+
   function sparkPath(values, w, h) {
     if (values.length < 2) return '';
     const max = Math.max(...values, 1);
@@ -246,6 +274,6 @@
     return hits.length === 1 ? hits[0].pid : null;
   }
 
-  return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, sparkPath, venueSplits, playerLog,
+  return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, slotFit, fitting, sparkPath, venueSplits, playerLog,
            sumAggs, aggLine, battingText, bowlingText, scPoints, caLines, rainRisk, climateRisk, windowHours, matchPid };
 });

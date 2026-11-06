@@ -59,6 +59,27 @@ test('captain picks weigh average by available games', () => {
   assert.deepEqual(L.captainPicks(e, 1).map(x => x.pid), ['b', 'a']);
 });
 
+const POSITIONS = { WKP: { squad: 1 }, BAT: { squad: 2 }, BWL: { squad: 1 }, FLX: { squad: 1 } };
+const P = (pid, ...pos) => ({ pid, pos, price: 100 });
+
+test('slotFit moves a dual-position player to free a seat, and FLX takes the overflow', () => {
+  const players = [P('wb', 'WKP', 'BAT'), P('b1', 'BAT'), P('b2', 'BAT'), P('w2', 'WKP')];
+  const f = L.slotFit(players, POSITIONS);
+  assert.deepEqual(f.unplaced, []);
+  assert.deepEqual(f.slots.map(s => s.pos), ['WKP', 'BAT', 'BAT', 'BWL', 'FLX']);
+  assert.deepEqual(f.slots.map(s => s.pid).filter(Boolean).sort(), ['b1', 'b2', 'w2', 'wb']);
+  for (const s of f.slots) if (s.pid && s.pos !== 'FLX') assert.ok(players.find(p => p.pid === s.pid).pos.includes(s.pos));
+  assert.equal(f.slots[3].pid, null);
+  const over = L.slotFit([P('w1', 'WKP'), P('w2', 'WKP'), P('w3', 'WKP')], POSITIONS);
+  assert.deepEqual([over.slots.find(s => s.pos === 'FLX').pid, over.unplaced], ['w2', ['w3']]);
+});
+
+test('fitting keeps affordable players who leave everyone a seat', () => {
+  const squad = [P('w1', 'WKP'), P('w2', 'WKP'), P('b1', 'BAT')];
+  const pool = [P('w3', 'WKP'), P('b2', 'BAT'), { ...P('x', 'BWL'), price: 500 }, P('y', 'BWL')];
+  assert.deepEqual(L.fitting(squad, pool, POSITIONS, 200).map(p => p.pid), ['b2', 'y']);
+});
+
 test('season line and overs', () => {
   const s = L.seasonLine({ m: 4, sc: 200, inn: 4, no: 1, r: 90, bf: 60, lb: 45, rc: 54 });
   assert.equal(s.avg, 50);
