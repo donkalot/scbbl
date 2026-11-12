@@ -1,7 +1,9 @@
 {
   "4": {"name": "MCG", "cricsheet": ["Melbourne Cricket Ground"], "notes": []},
   "36": {"name": "Manuka Oval", "cricsheet": ["Manuka Oval, Canberra"], "notes": []},
-  "37": {"name": "The Gabba", "cricsheet": ["Brisbane Cricket Ground"], "notes": []},
+  "37": {"name": "The Gabba", "cricsheet": ["Brisbane Cricket Ground"], "notes": [
+    {"date": "2026-09-21", "text": "A new full-sized wicket tray was installed beside the existing in-situ block in September, but it won't be trialled until 2027-28, so the existing block stays in use this season. Grounds manager David Sandurski says the new wicket copies the Gabba's clay, soil and turf to keep its pace and bounce.", "source": "https://www.brisbaneheat.com.au/news/4579274/heat-backs-gabba-pitch-move"}
+  ]},
   "38": {"name": "SCG", "cricsheet": ["Sydney Cricket Ground"], "notes": []},
   "75": {"name": "Optus Stadium", "cricsheet": ["Perth Stadium"], "notes": []},
   "76": {"name": "Adelaide Oval", "cricsheet": ["Adelaide Oval"], "notes": []},
