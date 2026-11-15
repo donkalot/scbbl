@@ -47,7 +47,7 @@ def main():
     by_season = cricsheet.parse_all(cricsheet.load_zip())
     idmap_path = DATA / 'idmap.json'
     previous = json.loads(idmap_path.read_text()) if idmap_path.exists() else {}
-    idmap, ca_names = register.ca_idmap(by_season, previous)
+    idmap, ca_names, kinds = register.ca_idmap(by_season, previous)
     players = aggregate(by_season, register.full_names(by_season) | ca_names)
 
     baseline = guards.load_baseline()
@@ -57,7 +57,7 @@ def main():
     guards.fail_if(fixture.check(fx), 'fixture')
     clim_path = DATA / 'climate.json'
     clim = climate.build(fx, json.loads(clim_path.read_text()) if clim_path.exists() else {})
-    grounds, problems = venues.build(by_season, fx)
+    grounds, problems = venues.build(by_season, fx, kinds=kinds)
     guards.fail_if(problems, 'venues')
 
     sq, _ = squads.build(players)

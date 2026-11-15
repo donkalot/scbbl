@@ -33,6 +33,14 @@ jobs:
           path: .cache/elsewhere
           key: elsewhere-${{ steps.week.outputs.week }}
 
+      # Completed scorecards never change, and fetching all five seasons' takes about 10 minutes.
+      # The key moves when register.py does (say a new season is added); restore-keys keeps the old ones.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ca
+          key: ca-${{ hashFiles('pipeline/register.py') }}
+          restore-keys: ca-
+
       - name: Download, rebuild, run guards
         run: python -m pipeline.build
 

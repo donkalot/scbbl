@@ -9,7 +9,10 @@ from collections import defaultdict
 from .common import CACHE, ca, fetch, team_code
 
 NAMES_URL = 'https://cricsheet.org/register/names.csv'
-CA_HISTORY = {'2024/25': 2673, '2025/26': 3185}
+# CA's competition list goes back only to BBL|11.
+CA_HISTORY = {'2021/22': 1840, '2022/23': 2155, '2023/24': 2407, '2024/25': 2673, '2025/26': 3185}
+SPIN = {'Off Spin', 'Leg Spin', 'Orthodox', 'Unorthodox'}
+PACE = {'Pace', 'Medium', 'Fast Seam'}
 
 
 def _cached(name, url, max_age_h=24):
@@ -71,13 +74,18 @@ def align(ca_players, cs_lines):
     return pairs
 
 
+def bowl_kind(t):
+    return 'spin' if t in SPIN else 'pace' if t in PACE else None
+
+
 def ca_idmap(by_season, previous=None):
-    """(CA player id -> Cricsheet id, Cricsheet id -> CA display name). The id map only ever grows."""
+    """(CA player id -> Cricsheet id, Cricsheet id -> CA display name, Cricsheet id -> 'spin' or 'pace').
+    The id map only ever grows."""
     idmap = dict(previous or {})
-    display = {}
+    display, kind = {}, {}
     for season, comp in CA_HISTORY.items():
         cs_by_key = {(m['date'], frozenset(m['teams'])): m for m in by_season.get(season, [])}
-        for f in ca('fixtures/yearfilter', competitionId=comp, limit=60, isInningInclude='true')['fixtures']:
+        for f in ca('fixtures/yearfilter', competitionId=comp, limit=80, isInningInclude='true')['fixtures']:
             if not f['isCompleted']:
                 continue
             m = cs_by_key.get((f['startDateTime'][:10], frozenset(
@@ -91,5 +99,8 @@ def ca_idmap(by_season, previous=None):
             for p in sc.get('players') or []:
                 by_team[ids[p['teamId']]].append(p)
                 display[str(p['id'])] = p['displayName']
+                if k := bowl_kind(p.get('bowlingType')):
+                    kind[str(p['id'])] = k
             idmap.update(align(by_team, m['lines']))
-    return idmap, {pid: display[cid] for cid, pid in idmap.items() if cid in display}
+    return (idmap, {pid: display[cid] for cid, pid in idmap.items() if cid in display},
+            {pid: kind[cid] for cid, pid in idmap.items() if cid in kind})

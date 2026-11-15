@@ -906,7 +906,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
       <h2>Matches</h2>
       <div class="row" style="margin-bottom:10px"><a href="#/matches${all ? '' : '?all=1'}"><button class="${all ? 'on' : ''}">Show completed</button></a></div>
       <div class="card" id="alerts"></div>
-      <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match, marked early beyond ${EARLY_DAYS} days because it often changes. Before that it's how often the same window has been wet over the past 10 years. A venue pill marks a ground whose first innings have clearly run high or low. Tap a match for the pitch history, team sheets and live SC points.</p>
+      <p class="muted">Rain risk comes from the Open-Meteo forecast within ${FORECAST_DAYS} days of a match, marked early beyond ${EARLY_DAYS} days because it often changes. Before that it's how often the same window has been wet over the past 10 years. A venue pill marks a ground whose first innings have clearly run high or low, or where spinners have clearly out- or under-scored pacers. Tap a match for the pitch history, team sheets and live SC points.</p>
       <div class="scroll"><table id="mtable">
         <thead><tr><th class="l">When (AEDT)</th><th class="l">Round</th><th class="l">Match</th><th class="l">Venue</th><th class="l">Rain</th><th class="l">Score</th></tr></thead>
         <tbody>${list.map(m => `<tr data-id="${m.id}">
@@ -1067,14 +1067,17 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
   }
 
   const LEAN = { batting: ['ok', 'Batting-friendly'], bowling: ['warn', 'Bowling-friendly'] };
+  const SPIN_LEAN = { spin: 'Spin-friendly', pace: 'Pace-friendly' };
   const PITCH_NEWS_DAYS = 60;
   function pitchPills(v) {
     if (!v) return '';
-    const h = v.hist, n = v.now;
+    const h = v.hist, n = v.now, sp = v.spin;
     const lean = h && LEAN[h.lean];
+    const spin = sp && SPIN_LEAN[sp.lean];
     const fresh = v.notes.some(x => Date.now() - Date.parse(x.date) < PITCH_NEWS_DAYS * 864e5);
     return [
       lean && `<span class="pill ${lean[0]}" title="First innings ${h.diff > 0 ? '+' : ''}${fix(h.diff, 0)} runs on the league average over ${h.n} full games">${lean[1]}</span>`,
+      spin && `<span class="pill" title="Spinners ${fix(sp.spin)} and pacers ${fix(sp.pace)} SC points an over here over ${sp.n} games">${spin}</span>`,
       n && n.changed && `<span class="pill" title="This season's first innings here are ${n.changed} than this ground's usual">${n.changed === 'higher' ? 'Scoring up' : 'Scoring down'} this season</span>`,
       fresh && '<span class="pill">Pitch news</span>',
     ].filter(Boolean).join(' ');
@@ -1096,8 +1099,16 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
       <p style="margin:6px 0 0">${n
         ? `This season (${esc(V.season)}): <b>${n.par}</b> over ${games(n.n)}, ${runs(n.diff)} on the league${n.changed ? `. That's ${n.changed} than usual here, by more than chance would explain` : h && h.lean ? ', in line with its usual' : ''}.`
         : `No full games here yet this season (${esc(V.season)}). This updates daily as results come in.`}</p>
+      ${spinLine(v.spin, V, span)}
       ${v.notes.length ? `<div class="feed" style="margin-top:6px">${v.notes.map(x => `<div class="item"><span class="date">${newsDay(x.date)}</span><span>${esc(x.text)}${source(x.source)}</span></div>`).join('')}</div>` : ''}
-      <p class="muted" style="margin:6px 0 0">Full games only: rain-shortened first innings are left out. This is background, not a predictor. Over 15 BBL seasons a ground's average hasn't predicted its next games, not even later in the same season. Reported pitch changes, like a re-laid square or new drop-in pitches, are listed here.</p></div>`;
+      <p class="muted" style="margin:6px 0 0">Full games only: rain-shortened first innings are left out. This is background, not a predictor. Over 15 BBL seasons a ground's average hasn't predicted its next games, not even later in the same season, and a ground's spin gap hasn't repeated either. Spin against pace counts bowling points only, using cricket.com.au's bowler types. Reported pitch changes, like a re-laid square or new drop-in pitches, are listed here.</p></div>`;
+  }
+
+  function spinLine(sp, V, span) {
+    if (!sp) return `<p style="margin:6px 0 0">Spin against pace: no games here in ${span} where both bowled at least 3 overs.</p>`;
+    const L = V.spin;
+    const verdict = sp.lean === 'even' ? 'no clear lean either way' : sp.lean ? `${sp.lean}-friendly` : 'too few games to call';
+    return `<p style="margin:6px 0 0">Spin against pace: spinners scored <b>${fix(sp.spin)}</b> SC points an over here and pacers <b>${fix(sp.pace)}</b>, over ${sp.n} game${sp.n === 1 ? '' : 's'} (league ${fix(L.spin)} and ${fix(L.pace)}). That's ${sp.diff >= 0 ? '+' : '−'}${fix(Math.abs(sp.diff))} an over for spin on the league's gap: ${verdict}.</p>`;
   }
 
   function teamSheets(m) {
