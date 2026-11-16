@@ -123,6 +123,16 @@ def check(counts, found, known, baseline):
     return problems
 
 
+def attach_form(sq, ew):
+    """Squad rows get `f20` = [SC points, games] in T20 elsewhere since `ew['since']`, for the projection.
+    Only competitions flagged `sc` are scored, so the Hundred is left out, as in the backtest."""
+    for rs in sq['teams'].values():
+        for r in rs:
+            y = ew['players'].get(r.get('pid'), {}).get('y', {}).get('t20') or {}
+            if y.get('scm'):
+                r['f20'] = [y['sc'], y['scm']]
+
+
 def build(sq, baseline, today=None):
     today = today or date.today()
     since = date(today.year - 1, today.month, 1).isoformat()

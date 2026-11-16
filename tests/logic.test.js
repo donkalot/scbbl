@@ -46,21 +46,74 @@ test('availability removes games that fall inside a linked event', () => {
   assert.equal(L.playerRounds('HEA', 'p2', grid, availability)[1].available, 1);
 });
 
-test('projAvg uses the last two seasons, career when that is too thin', () => {
-  const p = { s: { '2023/24': { sc: 300, m: 5 }, '2024/25': { sc: 0, m: 0 }, '2025/26': { sc: 120, m: 2 } } };
-  assert.equal(L.projAvg(p, ['2023/24', '2024/25', '2025/26']), 420 / 7);
-  p.s['2024/25'] = { sc: 200, m: 4 };
-  assert.equal(L.projAvg(p, ['2023/24', '2024/25', '2025/26']), 320 / 6);
+test('seasonOf maps a day to its BBL season', () => {
+  assert.equal(L.seasonOf('2026-12-12'), '2026/27');
+  assert.equal(L.seasonOf('2027-01-26'), '2026/27');
+  assert.equal(L.seasonOf('2099-12-01'), '2099/00');
 });
 
-test('captain picks weigh average by available games', () => {
+test('projection shrinks the last two seasons plus this one toward the league mean', () => {
+  const seasons = ['2023/24', '2024/25', '2025/26'];
+  const p = { s: { '2023/24': { sc: 900, m: 10 }, '2024/25': { sc: 300, m: 5 }, '2025/26': { sc: 300, m: 5 } } };
+  const x = L.projection(p, seasons, '2026/27');
+  assert.equal(x.g, 10);
+  assert.equal(x.raw, 60);
+  assert.ok(Math.abs(x.avg - (600 + 20 * 40.1) / 30) < 1e-9);
+  assert.equal(x.lift, 0);
+  p.s['2026/27'] = { sc: 100, m: 2 };
+  assert.equal(L.projection(p, [...seasons, '2026/27'], '2026/27').g, 12);
+});
+
+test('form elsewhere lifts thin BBL samples and fades with BBL games', () => {
+  const seasons = ['2024/25', '2025/26'];
+  const thin = { s: { '2025/26': { sc: 80, m: 2 } } };
+  const thick = { s: { '2024/25': { sc: 400, m: 10 }, '2025/26': { sc: 400, m: 10 } } };
+  const form = [650, 10];
+  const a = L.projection(thin, seasons, '2026/27', form);
+  const b = L.projection(thick, seasons, '2026/27', form);
+  const shrunk = (650 + 40 * 45) / 50;
+  assert.ok(Math.abs(a.lift - 3 * (shrunk - 45) * 2 / 4) < 1e-9);
+  assert.ok(b.lift > 0 && b.lift < a.lift / 5);
+  assert.ok(L.projection(thin, seasons, '2026/27', [200, 10]).lift < 0);
+});
+
+test('players with no recent BBL games get a flat value by type', () => {
+  const seasons = ['2023/24', '2024/25', '2025/26'];
+  const old = { s: { '2023/24': { sc: 500, m: 10 } } };
+  const flat = (p, f) => L.projection(p, seasons, '2026/27', f).avg;
+  assert.equal(flat(undefined, [400, 8]), L.PROJ.fresh.import);
+  assert.equal(flat(undefined, [100, 3]), L.PROJ.fresh.local);
+  assert.equal(flat(undefined), L.PROJ.fresh.local);
+  assert.equal(flat(old, [400, 8]), L.PROJ.back.import);
+  assert.equal(flat(old), L.PROJ.back.local);
+});
+
+test('home edge applies at the home side\'s own grounds only', () => {
+  const at = city => ({ home: 'REN', away: 'SIX', venue: { city } });
+  assert.equal(L.homeEdge(at('Melbourne'), 'REN'), L.HOME_EDGE);
+  assert.equal(L.homeEdge(at('Melbourne'), 'SIX'), -L.HOME_EDGE);
+  assert.equal(L.homeEdge(at('Chennai'), 'REN'), 0);
+  assert.equal(L.homeEdge({ home: 'REN', away: 'SIX' }, 'REN'), 0);
+  assert.equal(L.expected(40, [at('Melbourne'), at('Chennai')], 'SIX'), 80 - L.HOME_EDGE);
+  assert.equal(L.expected(null, [at('Melbourne')], 'SIX'), null);
+  assert.equal(L.expected(40, [], 'SIX'), 0);
+});
+
+test('captain picks rank expected points for the round', () => {
   const e = [
-    { pid: 'a', avg: 60, rounds: { 1: { available: 1 } } },
-    { pid: 'b', avg: 45, rounds: { 1: { available: 2 } } },
-    { pid: 'c', avg: 90, rounds: { 1: { available: 0 } } },
-    { pid: 'd', avg: null, rounds: { 1: { available: 2 } } },
+    { pid: 'a', exp: { 1: 60 } },
+    { pid: 'b', exp: { 1: 90 } },
+    { pid: 'c', exp: { 1: 0 } },
+    { pid: 'd', exp: { 1: null } },
+    { pid: 'e', exp: {} },
   ];
   assert.deepEqual(L.captainPicks(e, 1).map(x => x.pid), ['b', 'a']);
+});
+
+test('playerRounds lists the games a player is available for', () => {
+  const g = L.teamRounds(fixture, rounds.filter(r => !r.finals));
+  const r = L.playerRounds('HEA', 'nobody', g, { events: [], links: [] });
+  for (const x of Object.values(r)) assert.equal(x.played.length, x.available);
 });
 
 const POSITIONS = { WKP: { squad: 1 }, BAT: { squad: 2 }, BWL: { squad: 1 }, FLX: { squad: 1 } };

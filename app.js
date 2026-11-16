@@ -6,7 +6,7 @@
   const SQUAD_KEY = 'scbbl-squad';
   const D = {};
   const seasonCache = {};
-  let grid, leagueRounds, squadOf, seasons;
+  let grid, leagueRounds, squadOf, seasons, current, projCache;
 
   // ---------- helpers ----------
   function esc(s) {
@@ -76,7 +76,25 @@
   });
 
   const name = pid => (squadOf[pid] && squadOf[pid].n) || (D.players[pid] && D.players[pid].n) || pid;
-  const proj = pid => L.projAvg(D.players[pid], seasons);
+  function projOf(pid) {
+    if (!(pid in projCache)) {
+      const p = L.projection(D.players[pid], seasons, current, squadOf[pid] && squadOf[pid].f20);
+      projCache[pid] = p.g || squadOf[pid] ? p : null;
+    }
+    return projCache[pid];
+  }
+  const proj = pid => (projOf(pid) ? projOf(pid).avg : null);
+  function projWhy(p) {
+    const form = p.fn ? `${fix(p.formAvg)} in ${p.fn} T20s elsewhere` : 'no T20s elsewhere';
+    if (!p.g) {
+      const who = p.kind === 'import' ? `${L.PROJ.minForm}+ T20s elsewhere` : `fewer than ${L.PROJ.minForm} T20s elsewhere`;
+      return `No BBL games in the last two seasons: flat ${p.avg} for a ${p.back ? 'returning' : 'new'} player with ${who} (${form})`;
+    }
+    const lift = Math.abs(p.lift) >= 0.05 ? `, ${p.lift > 0 ? '+' : ''}${fix(p.lift)} for form (${form})` : '';
+    return `${fix(p.raw)} in ${p.g} recent BBL games, ${fix(p.base)} after the pull to average${lift}`;
+  }
+  const teamOf = pid => squadOf[pid] && squadOf[pid].team;
+  const expIn = (pid, x) => (x ? L.expected(proj(pid), x.played, teamOf(pid)) : 0);
   function link(pid) {
     return `<a href="#/player/${encodeURIComponent(pid)}">${esc(name(pid))}</a>`;
   }
@@ -117,7 +135,7 @@
           <option value="all"${st.scope === 'all' ? ' selected' : ''}>Everyone since 2011</option>
         </select>
       </div>
-      <p class="muted">Proj = average SC points over the last two seasons (career if fewer than 3 games). T20 elsewhere = SC points per game in T20Is and franchise T20 leagues over the last 12 months, scored with the same table (games in brackets; under 5 games sorts last). Squads as of ${esc(D.squads.as_of)}.</p>
+      <p class="muted">Proj = expected SC points a game: the last two BBL seasons (plus this one) pulled towards the league average of ${L.PROJ.mean}, harder the fewer games, nudged by T20 form elsewhere for players with few BBL games. Players with no recent BBL games get a flat value by type (see the player page). T20 elsewhere = SC points per game in T20Is and franchise T20 leagues over the last 12 months, scored with the same table (games in brackets; under 5 games sorts last). Squads as of ${esc(D.squads.as_of)}.</p>
       ${scNote()}
       <div class="scroll"><table id="ptable"></table></div>`;
     const latest = seasons[seasons.length - 1];
@@ -217,7 +235,7 @@
         ${sq && sq.c ? '<span class="pill ok">Captain</span>' : ''}
         ${sq && sq.new ? '<span class="pill">No BBL history</span>' : ''}</div>
       <div class="stats" style="margin-top:12px">
-        <div class="stat"><span class="muted">Proj (last 2 seasons)</span><b>${fix(proj(pid))}</b></div>
+        <div class="stat"><span class="muted">Proj</span><b>${fix(proj(pid))}</b>${projOf(pid) ? `<span class="muted" id="projwhy">${esc(projWhy(projOf(pid)))}</span>` : ''}</div>
         <div class="stat"><span class="muted">${esc(latestPlayed || 'Last season')} avg</span><b>${latestPlayed ? fix(p.s[latestPlayed].sc / p.s[latestPlayed].m) : '–'}</b></div>
         <div class="stat"><span class="muted">Career avg</span><b>${career.m ? fix(career.sc / career.m) : '–'}</b></div>
         <div class="stat"><span class="muted">Last 5 avg</span><b id="last5">–</b></div>
@@ -351,7 +369,10 @@
   function viewPlanner(params) {
     const sel = Number(params.get('r')) || null;
     const squad = mySquad().filter(pid => squadOf[pid] || D.players[pid]);
-    const entries = squad.map(pid => ({ pid, avg: proj(pid), team: squadOf[pid] && squadOf[pid].team, rounds: rounds16(pid) }))
+    const entries = squad.map(pid => {
+      const rounds = rounds16(pid);
+      return { pid, avg: proj(pid), team: teamOf(pid), rounds, exp: Object.fromEntries(Object.entries(rounds).map(([r, x]) => [r, expIn(pid, x)])) };
+    })
       .sort((a, b) => (a.team || 'ZZZ').localeCompare(b.team || 'ZZZ') || (b.avg ?? 0) - (a.avg ?? 0));
     const selRound = leagueRounds.find(r => r.round === sel);
     const cls = n => (n === 0 ? 'g0' : n >= 3 ? 'g3' : n === 2 ? 'g2' : '');
@@ -387,9 +408,10 @@
         <tfoot>
           <tr><th class="l" colspan="4">Players with a game</th>${leagueRounds.map(r => `<th>${entries.filter(e => e.rounds[r.round] && e.rounds[r.round].available).length}</th>`).join('')}<th></th></tr>
           <tr id="atrisk"><th class="l" colspan="4" title="Games your players are available for that have Med or High rain forecast">Games at rain risk</th>${leagueRounds.map(r => `<td data-r="${r.round}"></td>`).join('')}<td></td></tr>
-          <tr><th class="l" colspan="4">Captain options (proj × games)</th>${leagueRounds.map(r => `<td class="l" style="font-size:.8rem;white-space:normal;min-width:110px">${L.captainPicks(entries, r.round).map(c => `${esc(name(c.pid))} <span class="muted">${fix(c.value, 0)}</span>`).join('<br>') || '–'}</td>`).join('')}<td></td></tr>
+          <tr><th class="l" colspan="4">Captain options (expected points)</th>${leagueRounds.map(r => `<td class="l" style="font-size:.8rem;white-space:normal;min-width:110px">${L.captainPicks(entries, r.round).map(c => `${esc(name(c.pid))} <span class="muted">${fix(c.value, 0)}</span>`).join('<br>') || '–'}</td>`).join('')}<td></td></tr>
         </tfoot></table></div>
-        <p class="muted">A cell like 1/2 means the player misses one of two games for a listed clash. Proj is the last-two-seasons SC average.</p>`
+        <p class="muted">A cell like 1/2 means the player misses one of two games for a listed clash. Proj is expected SC points a game (how it's worked out is on the Players tab).
+          Captain options add up Proj over the games the player is available for, ${fix(L.HOME_EDGE, 2)} up at home and down away; neutral grounds get neither.</p>`
       : `<div class="card">Your squad is empty. Add players with the <b>+</b> button on the <a href="#/players">Players</a> tab. It's saved on this device only.</div>`}`;
     plannerRain(entries, selRound);
   }
@@ -507,7 +529,8 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     const games = pid => {
       const r = rounds16(pid);
       const n = x => (r[x.round] ? r[x.round].available : 0);
-      return { next: n(next), rest: leagueRounds.filter(x => x.round >= next.round).reduce((s, x) => s + n(x), 0) };
+      const ahead = leagueRounds.filter(x => x.round >= next.round);
+      return { next: n(next), rest: ahead.reduce((s, x) => s + n(x), 0), exp: ahead.reduce((s, x) => s + (expIn(pid, r[x.round]) ?? 0), 0) };
     };
     const inj = pid => (sc(pid).inj ? ` <span class="pill no">${esc(sc(pid).inj)}</span>` : '');
     const posText = pid => esc(sc(pid).pos.join('/'));
@@ -525,7 +548,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
         .map(p => ({ ...p, proj: proj(p.pid), g: games(p.pid) }));
       const keys = {
         proj: p => p.proj ?? -1,
-        total: p => (p.proj ?? 0) * p.g.rest,
+        total: p => p.g.exp,
         cheap: p => -p.price,
       };
       opts.sort((a, b) => keys[sort](b) - keys[sort](a));
@@ -536,7 +559,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
         <b>${out ? `Trade out ${esc(name(out))}` : `Fill the open ${pick} seat`}</b>
         <span class="muted">· up to ${price(budget)}${out ? '' : open.length > 1 ? `, keeping ${price(cheapest)} for each of the other ${open.length - 1} open seats` : ''} · <a href="#/team">close</a></span>
         ${noTrade ? `<div class="banner" id="notrade">No trades left ${ts.left ? `in round ${next.round}` : 'this season'}. Undo a trade from this round to free one.</div>` : ''}
-        <div class="row" style="margin:8px 0">Sort: ${[['proj', 'Proj'], ['total', 'Proj × games left'], ['cheap', 'Cheapest']].map(([k, t]) =>
+        <div class="row" style="margin:8px 0">Sort: ${[['proj', 'Proj'], ['total', 'Expected points left'], ['cheap', 'Cheapest']].map(([k, t]) =>
           `<a href="#/team?${qs}&sort=${k}"${k === sort ? ' style="font-weight:700"' : ''}>${t}</a>`).join(' · ')}</div>
         ${opts.length ? `<div class="scroll"><table id="opts">
           <thead><tr><th></th><th class="l">Player</th><th class="l">Team</th><th class="l">Pos</th><th>Price</th><th>Proj</th>${out ? '<th>Gain</th>' : ''}<th>R${next.round}</th><th>Games left</th></tr></thead>
@@ -585,8 +608,8 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     const fr = leagueRounds.find(r => r.round === Number(params.get('field'))) || next;
     const rk = String(fr.round);
     const pins = fieldPins()[rk] || {};
-    const roundOf16 = pid => rounds16(pid)[fr.round] || { games: 0, available: 0, missed: [] };
-    const sidePlayers = squad.map(p => ({ pid: p.pid, pos: p.pos, value: (proj(p.pid) ?? 0) * roundOf16(p.pid).available }));
+    const roundOf16 = pid => rounds16(pid)[fr.round] || { games: 0, available: 0, missed: [], played: [] };
+    const sidePlayers = squad.map(p => ({ pid: p.pid, pos: p.pos, value: expIn(p.pid, roundOf16(p.pid)) ?? 0 }));
     const side = L.bestField(sidePlayers, rules.positions, rules.emergencies, pins);
     const onField = side.seats.filter(s => s.pid).map(s => s.pid);
     const val = pid => sidePlayers.find(p => p.pid === pid).value;
@@ -627,10 +650,9 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
         <tbody>${side.bench.map(p => `<tr><td class="l name">${link(p.pid)}${inj(p.pid)}${emOf[p.pid] ? ` <span class="pill" title="Emergency: comes on if your on-field ${emOf[p.pid]} doesn't play">E ${emOf[p.pid]}</span>` : ''}</td>
           <td class="l">${team(squadOf[p.pid] && squadOf[p.pid].team)}</td><td class="l">${posText(p.pid)}</td>${gamesCell(p.pid)}<td>${fix(proj(p.pid))}</td><td>${fix(p.value, 0)}</td>
           <td class="l">${pinButton(p.pid, false)}</td></tr>`).join('')}</tbody></table></div>` : ''}
-      <p class="muted">Exp is Proj × games in round ${fr.round}, after listed clashes, so doubles count twice. The side fields the highest Exp that fits ${Object.entries(rules.positions).map(([p, r]) => `${r.active} ${p}`).join(', ')}.
+      <p class="muted">Exp is Proj for each game in round ${fr.round}, after listed clashes, so doubles count twice, ${fix(L.HOME_EDGE, 2)} up for a home game and down for an away one (the measured league-wide edge; nobody's own home record repeats from year to year). The side fields the highest Exp that fits ${Object.entries(rules.positions).map(([p, r]) => `${r.active} ${p}`).join(', ')}.
         Only your best ${rules.scoring || rules.active} on-field scores count, plus your captain's again, and the projection adds them up the same way.
-        Emergencies (E) are the best bench player with a game for each position, at most ${rules.emergencies}. A player with no BBL history has no Proj, so keep them on by hand.
-        The captain button is the same one as on the match page.</p>`;
+        Emergencies (E) are the best bench player with a game for each position, at most ${rules.emergencies}.        The captain button is the same one as on the match page.</p>`;
 
     $app.innerHTML = `
       <h2>Team</h2>
@@ -650,7 +672,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
         <tbody>${fit.slots.map(s => row(s.pos, s.pid)).join('')}${fit.unplaced.map(pid => row('–', pid)).join('')}</tbody>
       </table></div>
       <p class="muted">SuperCoach squads are ${rules.squad} players under ${price(rules.cap)}: ${Object.entries(rules.positions).map(([p, r]) => `${r.squad} ${p}`).join(', ')}, where FLX can be anyone.
-        A dual-position player sits wherever leaves room for the rest. Games are from round ${next.round} on, after listed clashes. Proj is the last-two-seasons SC average.
+        A dual-position player sits wherever leaves room for the rest. Games are from round ${next.round} on, after listed clashes. Proj is expected SC points a game (see the Players tab).
         This uses the same squad as the Players and Planner tabs, saved on this device only.</p>
       ${field}`;
 
@@ -1278,6 +1300,8 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     files.forEach((f, i) => { D[f] = loaded[i]; });
     D.sc = loaded[files.length];
     seasons = D.meta.seasons.slice().sort();
+    current = L.seasonOf(L.localDate(D.fixture.map(m => m.start).sort()[0]));
+    projCache = {};
     leagueRounds = D.rounds.rounds.filter(r => !r.finals);
     grid = L.teamRounds(D.fixture, leagueRounds);
     squadOf = {};

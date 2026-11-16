@@ -63,6 +63,7 @@ def main():
     sq, _ = squads.build(players)
     ew, comp_matches, new_players, problems = elsewhere.build(sq, baseline)
     guards.fail_if(problems, 'elsewhere')
+    elsewhere.attach_form(sq, ew)
     avail = json.loads((CURATED / 'availability.json').read_text(encoding='utf-8'))
     notes = json.loads((CURATED / 'notes.json').read_text(encoding='utf-8'))
     unknown = squads.link(avail['links'], sq) + squads.link(notes, sq)

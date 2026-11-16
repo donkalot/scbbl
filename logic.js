@@ -45,7 +45,7 @@
     const out = {};
     for (const [round, games] of Object.entries(team && grid[team] ? grid[team] : {})) {
       const missed = games.filter(m => evs.some(e => within(localDate(m.start), e)));
-      out[round] = { games: games.length, available: games.length - missed.length, missed };
+      out[round] = { games: games.length, available: games.length - missed.length, missed, played: games.filter(m => !missed.includes(m)) };
     }
     return out;
   }
@@ -65,23 +65,58 @@
     };
   }
 
-  // SC average over the two latest seasons; falls back to the whole career under 3 games.
-  function projAvg(player, seasons) {
-    if (!player) return null;
-    const sum = keys => keys.reduce((t, k) => {
-      const a = player.s[k];
-      return a ? { sc: t.sc + a.sc, m: t.m + a.m } : t;
-    }, { sc: 0, m: 0 });
-    let t = sum(seasons.slice(-2));
-    if (t.m < 3) t = sum(Object.keys(player.s));
-    return t.m ? t.sc / t.m : null;
+  // Fitted by leave-one-season-out backtest on 1,422 BBL player-seasons, 2013/14 to 2025/26.
+  // No BBL games in the window: imports (5+ T20 games elsewhere) and locals, first-timers or returning.
+  const PROJ = { mean: 40.1, k: 20, formMean: 45, formK: 40, formW: 3, formC: 2, minForm: 5,
+                 fresh: { import: 41, local: 30 }, back: { import: 50, local: 38 } };
+  // Half the measured home-minus-away gap of 1.7 SC points per player per game.
+  const HOME_EDGE = 0.85;
+  const HOME_CITIES = { HEA: ['Brisbane', 'Gold Coast'], HUR: ['Hobart', 'Launceston'], REN: ['Melbourne', 'Geelong'],
+                        SCO: ['Perth'], SIX: ['Sydney'], STA: ['Melbourne'], STR: ['Adelaide'], THU: ['Sydney', 'Canberra'] };
+
+  // '2026-12-12' -> '2026/27'
+  function seasonOf(day) {
+    const y = Number(day.slice(0, 4)) - (Number(day.slice(5, 7)) < 7 ? 1 : 0);
+    return `${y}/${String((y + 1) % 100).padStart(2, '0')}`;
   }
 
-  // entries: [{pid, avg, rounds: {round: {available}}}] -> best captain options for a round
+  // SC points a game: the two seasons before `current` plus `current` itself, pulled toward the league
+  // average, plus T20 form elsewhere (form = [points, games]) that fades as BBL games build up.
+  function projection(player, seasons, current, form) {
+    const [fsc, fn] = form || [0, 0];
+    const formAvg = fn ? fsc / fn : null;
+    let sc = 0, g = 0;
+    for (const s of [...seasons.filter(x => x < current).slice(-2), current]) {
+      const a = player && player.s[s];
+      if (a) { sc += a.sc; g += a.m; }
+    }
+    if (!g) {
+      const kind = fn >= PROJ.minForm ? 'import' : 'local';
+      const back = !!(player && Object.keys(player.s).length);
+      return { avg: (back ? PROJ.back : PROJ.fresh)[kind], g, kind, back, formAvg, fn };
+    }
+    const base = (sc + PROJ.k * PROJ.mean) / (g + PROJ.k);
+    const shrunk = (fsc + PROJ.formK * PROJ.formMean) / (fn + PROJ.formK);
+    const lift = PROJ.formW * (shrunk - PROJ.formMean) * PROJ.formC / (g + PROJ.formC);
+    return { avg: base + lift, g, raw: sc / g, base, lift, formAvg, fn };
+  }
+
+  // +HOME_EDGE at home, -HOME_EDGE away; nothing at a ground that isn't the home side's.
+  function homeEdge(m, team) {
+    if (!m.venue || !(HOME_CITIES[m.home] || []).includes(m.venue.city)) return 0;
+    return m.home === team ? HOME_EDGE : m.away === team ? -HOME_EDGE : 0;
+  }
+
+  // Expected SC points from `games` (fixture matches the player is available for).
+  function expected(avg, games, team) {
+    return avg == null ? null : games.reduce((s, m) => s + avg + homeEdge(m, team), 0);
+  }
+
+  // entries: [{pid, exp: {round: expected points}}] -> best captain options for a round
   function captainPicks(entries, round, n = 3) {
     return entries
-      .filter(e => e.avg != null && e.rounds[round] && e.rounds[round].available > 0)
-      .map(e => ({ ...e, value: e.avg * e.rounds[round].available }))
+      .filter(e => e.exp[round] > 0)
+      .map(e => ({ ...e, value: e.exp[round] }))
       .sort((a, b) => b.value - a.value)
       .slice(0, n);
   }
@@ -366,6 +401,6 @@
     return { squad, captain, pins, missing };
   }
 
-  return { TEAMS, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, projAvg, captainPicks, slotFit, fitting,
+  return { TEAMS, PROJ, HOME_EDGE, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, seasonOf, projection, homeEdge, expected, captainPicks, slotFit, fitting,
            bestField, fieldScore, tradeRound, tradeStatus, sparkPath, venueSplits, playerLog, sumAggs, aggLine, battingText, bowlingText, scPoints, byeDots, caLines, rainRisk, climateRisk, windowHours, matchPid, scPicks, scImport };
 });

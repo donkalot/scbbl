@@ -101,3 +101,11 @@ def test_check_flags_shrunken_competition_and_poor_linking():
     problems = elsewhere.check({'ssh': 200}, {}, known, base)
     assert problems == ['ssh: 200 matches, baseline 218', 'ipl: 0 matches, baseline 1243',
                         'only 0 of 20 squad players have a record outside the BBL']
+
+
+def test_attach_form_gives_squad_rows_their_scored_t20_games():
+    sq = {'teams': {'HEA': [{'pid': 'a'}, {'pid': 'b'}, {'pid': 'c'}, {'n': 'Unresolved'}]}}
+    ew = {'players': {'a': {'y': {'t20': {'m': 9, 'sc': 400, 'scm': 8}, 'od': {'m': 3}}},
+                      'b': {'y': {'t20': {'m': 2}}}, 'c': {'y': {'fc': {'m': 4}}}}}
+    elsewhere.attach_form(sq, ew)
+    assert [r.get('f20') for r in sq['teams']['HEA']] == [[400, 8], None, None, None]
