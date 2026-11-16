@@ -12,9 +12,10 @@ binding = "SENT"
 id = "1036821abe0f4b6b94fe68ee1c1f9f8a"
 
 [vars]
-SITE = "https://donkalot.github.io/scbbl"
-VAPID_SUBJECT = "https://donkalot.github.io/scbbl/"
-# Pages allowed to subscribe (exact origins, comma-separated).
-ORIGINS = "https://donkalot.github.io, http://localhost:8000, http://127.0.0.1:8000"
+SITE = "https://bbl.fantasyplanner.au"
+VAPID_SUBJECT = "https://bbl.fantasyplanner.au/"
+# Pages allowed to subscribe (exact origins, comma-separated). The github.io origin stays so
+# subscriptions made there before the move can still be changed or cancelled.
+ORIGINS = "https://bbl.fantasyplanner.au, https://donkalot.github.io, http://localhost:8000, http://127.0.0.1:8000"
 
 # Secret: wrangler secret put VAPID_PRIVATE (an ECDSA P-256 private key as a JWK, see README).

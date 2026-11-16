@@ -1250,7 +1250,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
   const PAGES = ['players', 'player', 'planner', 'team', 'availability', 'matches', 'match', 'roles'];
   let uncounted = [];
   function countVisit(page) {
-    if (location.hostname !== 'donkalot.github.io') return;
+    if (location.hostname !== 'bbl.fantasyplanner.au') return;
     const path = '/' + page;
     if (window.goatcounter && window.goatcounter.count) return window.goatcounter.count({ path });
     uncounted.push(path);

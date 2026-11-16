@@ -5,7 +5,7 @@ import { handle, subId, PREFIX } from '../src/subs.js';
 import { browser, decrypt, checkVapid, memoryKV, vapidEnv } from './pushkit.js';
 
 const VAPID = await vapidEnv();
-const SITE = 'https://donkalot.github.io';
+const SITE = 'https://bbl.fantasyplanner.au';
 const FCM = 'https://fcm.googleapis.com/fcm/send/abc';
 
 test('encryption reproduces the RFC 8291 section 5 example byte for byte', async () => {

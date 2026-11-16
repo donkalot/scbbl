@@ -106,5 +106,5 @@ export async function handle(req, env, fetchFn = fetch, now = Date.now()) {
     const [status, out] = path === '/subscribe' ? await subscribe(body, env, fetchFn, now) : await unsubscribe(body, env);
     return reply(status, out);
   }
-  return new Response('scbbl notifier. Turn on match alerts on the Matches page of https://donkalot.github.io/scbbl/\n', { status: path === '/' ? 200 : 404 });
+  return new Response('scbbl notifier. Turn on match alerts on the Matches page of https://bbl.fantasyplanner.au/\n', { status: path === '/' ? 200 : 404 });
 }

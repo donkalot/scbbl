@@ -55,8 +55,8 @@ def main():
         y = 250 + i * 54
         d.ellipse([76, y + 14, 88, y + 26], fill=ACCENT)
         d.text((106, y), line, font=font(30), fill=WHITE)
-    d.text((72, H - 66), 'donkalot.github.io/scbbl', font=font(30, True), fill=WHITE)
-    d.text((72 + d.textlength('donkalot.github.io/scbbl', font=font(30, True)) + 20, H - 60),
+    d.text((72, H - 66), 'bbl.fantasyplanner.au', font=font(30, True), fill=WHITE)
+    d.text((72 + d.textlength('bbl.fantasyplanner.au', font=font(30, True)) + 20, H - 60),
            'free · unofficial', font=font(24), fill=MUTED)
 
     rounds, games = grid()

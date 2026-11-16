@@ -2,7 +2,7 @@
 
 A planner for SuperCoach BBL. It covers SC points history for every Big Bash player since 2011, a doubles and byes grid for BBL|16, international and overseas-league clashes, automatically detected role changes, rain risk and live SC points during matches.
 
-**Live site:** https://donkalot.github.io/scbbl/
+**Live site:** https://bbl.fantasyplanner.au/
 
 This is an unofficial fan site, not affiliated with SuperCoach, News Corp or Cricket Australia.
 
@@ -44,7 +44,7 @@ Changing `VAPID_PRIVATE` invalidates every subscription; subscribers have to tur
 
 ## Visit counts
 
-The live site counts visits with GoatCounter (`scbbl.goatcounter.com`), with no cookies. It sends only the page name (`/team`, `/planner` and so on), never the rest of the URL, which can hold an imported SuperCoach team. Nothing is counted off `donkalot.github.io`.
+The live site counts visits with GoatCounter (`scbbl.goatcounter.com`), with no cookies. It sends only the page name (`/team`, `/planner` and so on), never the rest of the URL, which can hold an imported SuperCoach team. Nothing is counted off `bbl.fantasyplanner.au`.
 
 ## Data
 
@@ -68,7 +68,7 @@ Cricsheet uses one person id across every competition, so squad players link wit
 
 ## SuperCoach snapshot
 
-SuperCoach can't be fetched by a script, so each round, signed in at supercoach.com.au, save these responses into `curated/sc_raw/`. The quick way is the bookmark on [`tools.html`](https://donkalot.github.io/scbbl/tools.html): click it on any SuperCoach BBL page and it downloads all three files, already named, using your own login. By hand:
+SuperCoach can't be fetched by a script, so each round, signed in at supercoach.com.au, save these responses into `curated/sc_raw/`. The quick way is the bookmark on [`tools.html`](https://bbl.fantasyplanner.au/tools.html): click it on any SuperCoach BBL page and it downloads all three files, already named, using your own login. By hand:
 
 | URL (under `https://www.supercoach.com.au/2026/api/bbl/classic/v1/`) | Save as |
 | --- | --- |

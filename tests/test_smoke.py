@@ -350,18 +350,18 @@ def test_pasted_statsplayers_response_imports_the_team(server, page):
 
 def test_visit_counts_send_the_page_name_only(page):
     def site(route):
-        rel = route.request.url.split('/scbbl/', 1)[1].split('#')[0].split('?')[0] or 'index.html'
+        rel = route.request.url.split('.au/', 1)[1].split('#')[0].split('?')[0] or 'index.html'
         f = ROOT / rel
         if not f.is_file():
             return route.fulfill(status=404, body='')
         route.fulfill(body=f.read_bytes(), content_type={'.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml'}.get(f.suffix, 'text/html'))
-    page.route('https://donkalot.github.io/scbbl/**', site)
+    page.route('https://bbl.fantasyplanner.au/**', site)
     held = []
     page.route('https://gc.zgo.at/count.js', lambda r: held.append(r))
     page.route(re.compile(r'https://(api\.open-meteo\.com|apiv2\.cricket\.com\.au)/.*'), lambda r: r.abort())
-    page.goto('https://donkalot.github.io/scbbl/#/team?r=1&sc=98:true,8:vice')
+    page.goto('https://bbl.fantasyplanner.au/#/team?r=1&sc=98:true,8:vice')
     expect(page.locator('#import')).to_be_visible()
-    page.goto('https://donkalot.github.io/scbbl/#/planner')
+    page.goto('https://bbl.fantasyplanner.au/#/planner')
     expect(page.locator('#app h2').first).to_have_text('Doubles and byes')
     assert len(held) == 1, 'the counter script loads once, after the first page'
     held[0].fulfill(content_type='text/javascript', body="""
