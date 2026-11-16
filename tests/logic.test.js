@@ -180,11 +180,17 @@ test('tradeRound is the first round with a match still to finish', () => {
   assert.equal(L.tradeRound(fx, rounds, Date.parse('2026-12-22T00:00:00Z')), null);
 });
 
-test('tradeStatus caps the round at the season total, and a boost adds a trade', () => {
-  const rules = { trades_round: 3, trades_total: 26, boosts: 2 };
-  const book = { trades: [...Array(23).fill({ round: 1 }), { round: 5 }, { round: 5 }], boosts: [5] };
-  assert.deepEqual(L.tradeStatus(book, rules, 5), { used: 25, inRound: 2, roundMax: 4, boosted: true, left: 1, roundLeft: 1, boostsLeft: 1 });
+test('tradeStatus: none in round 1, 3 a round after that that do not carry over, and a boost adds a 4th', () => {
+  const rules = { trades_round: 3, trades_total: 26, boosts: 2, rounds: 9 };
+  const empty = { trades: [], boosts: [] };
+  assert.deepEqual(L.tradeStatus(empty, rules, 1), { used: 0, inRound: 0, roundMax: 0, boosted: false, roundLeft: 0, boostsLeft: 2, canBoost: false, left: 26 });
+  assert.equal(L.tradeStatus(empty, rules, 2).left, 26);
+  const book = { trades: [{ round: 2 }, { round: 5 }, { round: 5 }], boosts: [5] };
+  assert.deepEqual(L.tradeStatus(book, rules, 5), { used: 3, inRound: 2, roundMax: 4, boosted: true, roundLeft: 2, boostsLeft: 1, canBoost: false, left: 2 + 12 + 1 });
   assert.equal(L.tradeStatus({ trades: [{ round: 6 }], boosts: [] }, rules, 6).roundLeft, 2);
+  // In the last round only one boost can still be used, and a round's spare trades are gone once it ends.
+  assert.equal(L.tradeStatus(empty, rules, 9).left, 4);
+  assert.equal(L.tradeStatus({ trades: [{ round: 9 }], boosts: [3, 9] }, rules, 9).left, 3);
 });
 
 test('season line and overs', () => {

@@ -558,7 +558,8 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
       picker = `<div class="card" id="picker">
         <b>${out ? `Trade out ${esc(name(out))}` : `Fill the open ${pick} seat`}</b>
         <span class="muted">· up to ${price(budget)}${out ? '' : open.length > 1 ? `, keeping ${price(cheapest)} for each of the other ${open.length - 1} open seats` : ''} · <a href="#/team">close</a></span>
-        ${noTrade ? `<div class="banner" id="notrade">No trades left ${ts.left ? `in round ${next.round}` : 'this season'}. Undo a trade from this round to free one.</div>` : ''}
+        ${noTrade ? `<div class="banner" id="notrade">${next.round === 1 ? 'There are no trades in round 1. Trading opens for round 2 once round 1 is over.'
+          : `No trades left in round ${next.round}. Undo a trade from this round to free one${ts.canBoost ? ', or use a boost' : ''}.`}</div>` : ''}
         <div class="row" style="margin:8px 0">Sort: ${[['proj', 'Proj'], ['total', 'Expected points left'], ['cheap', 'Cheapest']].map(([k, t]) =>
           `<a href="#/team?${qs}&sort=${k}"${k === sort ? ' style="font-weight:700"' : ''}>${t}</a>`).join(' · ')}</div>
         ${opts.length ? `<div class="scroll"><table id="opts">
@@ -588,21 +589,21 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     };
 
     const imp = importCard(params, rules);
-    const roundsLeft = leagueRounds.filter(r => r.round >= next.round).length;
+    const rulesText = `None in round 1, then ${rules.trades_round} a round from round 2. Unused trades don't carry over. A boost adds an extra trade to a round of your choice, in up to ${rules.boosts} rounds.`;
     const trades = `<div class="card" id="trades"><b>Trades</b>
-      ${!locked ? `<p class="muted" style="margin:6px 0 0">Changes are free until the first lockout, ${esc(when(rules.lockout))}. After that, each Swap here counts as a trade: ${rules.trades_round} a round and ${rules.trades_total} for the season.</p>` : `
+      ${!locked ? `<p class="muted" style="margin:6px 0 0">Changes are free until the first lockout, ${esc(when(rules.lockout))}. After that, each Swap here counts as a trade. ${rulesText}</p>` : `
         <div class="stats">
           <div class="stat"><span class="muted">Round ${next.round}</span><b id="tround">${ts.inRound}/${ts.roundMax}</b></div>
-          <div class="stat"><span class="muted">Season</span><b id="tseason">${ts.used}/${rules.trades_total}</b></div>
-          <div class="stat"><span class="muted">Average left per round</span><b>${roundsLeft ? fix(ts.left / roundsLeft) : '–'}</b></div>
+          <div class="stat"><span class="muted">Used</span><b id="tseason">${ts.used}/${rules.trades_total}</b></div>
+          <div class="stat"><span class="muted">Still usable</span><b id="tleft">${ts.left}</b></div>
           <div class="stat"><span class="muted">Boosts left</span><b id="tboosts">${ts.boostsLeft}/${rules.boosts}</b></div>
         </div>
         <div style="margin:8px 0">${ts.boosted ? (ts.inRound <= rules.trades_round ? `<button data-boost="off">Cancel the boost in round ${next.round}</button>` : `<span class="muted">Boost used in round ${next.round}.</span>`)
-          : ts.boostsLeft > 0 ? `<button data-boost="on">Use a boost in round ${next.round} (+1 trade)</button>` : ''}</div>
+          : ts.canBoost ? `<button data-boost="on">Use a boost in round ${next.round} (+1 trade)</button>` : ''}</div>
         ${book.trades.length ? `<div class="scroll"><table id="tlog"><tbody>${book.trades.map((t, i) => ({ ...t, i })).reverse().map(t => `<tr>
           <td class="l">R${t.round}</td><td class="l">${link(t.out)} → ${link(t.in)}</td>
           <td class="l">${t.round === next.round ? `<button data-undo="${t.i}" title="Swap back and get the trade back">Undo</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
-        <p class="muted" style="margin:6px 0 0">Counts Swaps made here since the lockout, against the round still being played (now round ${next.round}). Undo works until that round ends. A boost is assumed to add one trade to a round and still count towards the ${rules.trades_total}. Adding or removing players with ✓ and + isn't counted.</p>`}
+        <p class="muted" style="margin:6px 0 0">Counts Swaps made here since the lockout, against the round still being played (now round ${next.round}). Undo works until that round ends. ${rulesText} Still usable counts this round's spare trades, ${rules.trades_round} for each later round and the boosts you can still fit in. Adding or removing players with ✓ and + isn't counted.</p>`}
     </div>`;
 
     const fr = leagueRounds.find(r => r.round === Number(params.get('field'))) || next;

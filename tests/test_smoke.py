@@ -247,6 +247,7 @@ def test_trades_count_after_the_lockout_with_undo_boost_and_limit(server, page):
     page.locator('#opts button[data-in]').first.click()
     expect(page.locator('#tround')).to_have_text('1/3')
     expect(page.locator('#tseason')).to_have_text('1/26')
+    expect(page.locator('#tleft')).to_have_text('25')
     expect(page.locator('#tlog tbody tr')).to_have_count(1)
     expect(page.locator('#tlog tbody tr').first).to_contain_text('R2')
 
@@ -265,6 +266,19 @@ def test_trades_count_after_the_lockout_with_undo_boost_and_limit(server, page):
     page.goto(server + '#/team?out=' + marsh)
     expect(page.locator('#notrade')).to_contain_text('No trades left in round 2')
     expect(page.locator('#opts button[data-in]').first).to_be_disabled()
+
+
+def test_no_trades_in_round_1(server, page):
+    from datetime import datetime, timezone
+    page.clock.set_fixed_time(datetime(2026, 12, 14, 0, 0, tzinfo=timezone.utc))
+    marsh = _squad_pid('SCO', 'Mitchell Marsh')
+    _seed(page, [marsh])
+    page.goto(server + '#/team?out=' + marsh)
+    expect(page.locator('#tround')).to_have_text('0/0')
+    expect(page.locator('#tleft')).to_have_text('26')
+    expect(page.locator('#notrade')).to_contain_text('no trades in round 1')
+    expect(page.locator('#opts button[data-in]').first).to_be_disabled()
+    expect(page.locator('#trades button[data-boost]')).to_have_count(0)
 
 
 SC_TEAM = json.loads((ROOT / 'tests' / 'fixtures' / 'sc_statsPlayers.json').read_text(encoding='utf-8'))

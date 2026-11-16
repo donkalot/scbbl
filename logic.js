@@ -192,16 +192,20 @@
   }
 
   // book {trades: [{round, out, in}], boosts: [round]} -> what's used and left, overall and in `round`.
+  // SC has no trades in round 1, then trades_round a round that don't carry over, plus one boost
+  // trade in each of up to `boosts` rounds (8 x 3 + 2 = the 26 total).
   function tradeStatus(book, rules, round) {
     const used = book.trades.length;
     const inRound = book.trades.filter(t => t.round === round).length;
     const boosted = book.boosts.includes(round);
-    const roundMax = rules.trades_round + (boosted ? 1 : 0);
+    const roundMax = round > 1 ? rules.trades_round + (boosted ? 1 : 0) : 0;
+    const roundLeft = Math.max(0, roundMax - inRound);
+    const boostsLeft = rules.boosts - book.boosts.length;
+    const later = Math.max(0, rules.rounds - round);
+    const canBoost = round > 1 && !boosted && boostsLeft > 0;
     return {
-      used, inRound, roundMax, boosted,
-      left: rules.trades_total - used,
-      roundLeft: Math.max(0, Math.min(roundMax - inRound, rules.trades_total - used)),
-      boostsLeft: rules.boosts - book.boosts.length,
+      used, inRound, roundMax, boosted, roundLeft, boostsLeft, canBoost,
+      left: roundLeft + later * rules.trades_round + Math.min(boostsLeft, later + (canBoost ? 1 : 0)),
     };
   }
 
