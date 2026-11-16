@@ -118,3 +118,19 @@ def test_spin_ignores_games_where_one_kind_barely_bowled_and_unknown_bowlers():
         ms.append(m('Average Ground', 150, lines=[spell('s1', 3, balls=12), spell('p1', 1), spell('x9', 4)]))
     out, _ = venues.build(bs, FX, CUR, kinds=KINDS)
     assert out['venues']['2']['spin']['n'] == 15
+
+
+def test_economy_lean_is_separate_from_points():
+    # Wickets alone move points, not economy.
+    out, _ = venues.build(spin_seasons((2, 2, 2)), FX, CUR, kinds=KINDS)
+    assert out['venues']['1']['spin']['econ_lean'] == 'even'
+    # Spinners going for 6 an over instead of 8 at Flat Track, game after game.
+    bs = spin_seasons((1, 1, 1))
+    for ms in bs.values():
+        for x in ms:
+            if x['venue'] == 'Flat Track':
+                for l in x['lines']:
+                    if KINDS[l['pid']] == 'spin':
+                        l['rc'] = 24
+    sp = venues.build(bs, FX, CUR, kinds=KINDS)[0]['venues']['1']['spin']
+    assert sp['econ_lean'] == 'spin' and sp['econ_spin'] == 6.0 and sp['econ_pace'] == 8.0
