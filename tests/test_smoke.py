@@ -389,11 +389,11 @@ def test_visit_counts_send_the_page_name_only(page):
     assert page.evaluate('window.counts') == [['https://scbbl.goatcounter.com/count', True], '/team', '/planner', '/roles']
 
 
-def _with_stat_round(path, n):
+def _with_stat_round(path, n, owned):
     players = json.loads(path.read_text(encoding='utf-8'))
     for p in players:
         for s in p['player_stats']:
-            s['round'] = n
+            s['round'], s['owned'] = n, owned
     return json.dumps(players)
 
 
@@ -405,22 +405,20 @@ def _save_bookmark(page, server):
     return unquote(href[len('javascript:'):])
 
 
-@pytest.mark.parametrize('retry_is_round0', [False, True], ids=['retry-gives-round1', 'preseason-still-round0'])
-def test_save_prices_bookmark_downloads_the_three_raw_files(server, page, retry_is_round0):
+@pytest.mark.parametrize('owned', [12.3, None], ids=['with-ownership', 'no-ownership'])
+def test_save_prices_bookmark_downloads_the_three_raw_files(server, page, owned):
     code = _save_bookmark(page, server)
     raw = ROOT / 'curated' / 'sc_raw'
-    round0 = ROOT / 'tests' / 'fixtures' / 'sc_players_round0.json'
-    round1 = _with_stat_round(raw / 'players-round1.json', 1)
-    retry_body = round0.read_text(encoding='utf-8') if retry_is_round0 else round1
-    auth, asked = [], []
+    players_body = _with_stat_round(raw / 'players-round1.json', 1, owned)
+    auth, asked, msgs = [], [], []
+    page.on('dialog', lambda d: (msgs.append(d.message), d.dismiss()))
 
     def fake_sc(route):
         url = route.request.url
         if '/v1/players-cf' in url:
             auth.append(route.request.headers.get('authorization'))
             asked.append(re.search(r'round=(\d+)', url)[1])
-            body = round0.read_text(encoding='utf-8') if asked[-1] == '0' else retry_body
-            return route.fulfill(content_type='application/json', body=body)
+            return route.fulfill(content_type='application/json', body=players_body)
         for key, name in (('settings', 'settings.json'), ('real_fixture', 'fixture.json')):
             if f'/v1/{key}' in url:
                 auth.append(route.request.headers.get('authorization'))
@@ -439,12 +437,14 @@ def test_save_prices_bookmark_downloads_the_three_raw_files(server, page, retry_
         if len(got) == 3:
             break
         page.wait_for_timeout(100)
-    assert auth == ['Bearer tok'] * 4
-    assert asked == ['0', '1'], 'a pre-season round 0 answer is retried as round 1'
+    assert auth == ['Bearer tok'] * 3
+    assert asked == ['1'], "the page asked for round 0, but only settings' next_round carries ownership"
     assert sorted(d.suggested_filename for d in got) == ['fixture.json', 'players-round1.json', 'settings.json']
+    page.wait_for_timeout(200)
+    assert msgs == ([] if owned else ['Saved, but SuperCoach sent no ownership for round 1.'])
     for d in got:
         name = d.suggested_filename
-        want = retry_body if name.startswith('players') else (raw / name).read_text(encoding='utf-8')
+        want = players_body if name.startswith('players') else (raw / name).read_text(encoding='utf-8')
         assert json.loads(pathlib.Path(d.path()).read_text(encoding='utf-8')) == json.loads(want)
 
 
