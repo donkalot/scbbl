@@ -388,6 +388,14 @@ def test_visit_counts_send_the_page_name_only(page):
     assert page.evaluate('window.counts') == [['https://scbbl.goatcounter.com/count', True], '/team', '/planner', '/roles']
 
 
+def _with_stat_round(path, n):
+    players = json.loads(path.read_text(encoding='utf-8'))
+    for p in players:
+        for s in p['player_stats']:
+            s['round'] = n
+    return json.dumps(players)
+
+
 def _save_bookmark(page, server):
     from urllib.parse import unquote
     page.goto(server.replace('index.html', 'tools.html'))
@@ -396,9 +404,13 @@ def _save_bookmark(page, server):
     return unquote(href[len('javascript:'):])
 
 
-def test_save_prices_bookmark_downloads_the_three_raw_files(server, page):
+@pytest.mark.parametrize('retry_is_round0', [False, True], ids=['retry-gives-round1', 'preseason-still-round0'])
+def test_save_prices_bookmark_downloads_the_three_raw_files(server, page, retry_is_round0):
     code = _save_bookmark(page, server)
     raw = ROOT / 'curated' / 'sc_raw'
+    round0 = ROOT / 'tests' / 'fixtures' / 'sc_players_round0.json'
+    round1 = _with_stat_round(raw / 'players-round1.json', 1)
+    retry_body = round0.read_text(encoding='utf-8') if retry_is_round0 else round1
     auth, asked = [], []
 
     def fake_sc(route):
@@ -406,8 +418,8 @@ def test_save_prices_bookmark_downloads_the_three_raw_files(server, page):
         if '/v1/players-cf' in url:
             auth.append(route.request.headers.get('authorization'))
             asked.append(re.search(r'round=(\d+)', url)[1])
-            body = ROOT / 'tests' / 'fixtures' / 'sc_players_round0.json' if asked[-1] == '0' else raw / 'players-round1.json'
-            return route.fulfill(content_type='application/json', body=body.read_text(encoding='utf-8'))
+            body = round0.read_text(encoding='utf-8') if asked[-1] == '0' else retry_body
+            return route.fulfill(content_type='application/json', body=body)
         for key, name in (('settings', 'settings.json'), ('real_fixture', 'fixture.json')):
             if f'/v1/{key}' in url:
                 auth.append(route.request.headers.get('authorization'))
@@ -431,7 +443,8 @@ def test_save_prices_bookmark_downloads_the_three_raw_files(server, page):
     assert sorted(d.suggested_filename for d in got) == ['fixture.json', 'players-round1.json', 'settings.json']
     for d in got:
         name = d.suggested_filename
-        assert json.loads(pathlib.Path(d.path()).read_text(encoding='utf-8')) == json.loads((raw / name).read_text(encoding='utf-8'))
+        want = retry_body if name.startswith('players') else (raw / name).read_text(encoding='utf-8')
+        assert json.loads(pathlib.Path(d.path()).read_text(encoding='utf-8')) == json.loads(want)
 
 
 def test_save_prices_bookmark_refuses_off_supercoach(server, page):
