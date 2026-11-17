@@ -30,6 +30,9 @@
   .bar { max-width: 1100px; margin: 0 auto; padding: 10px 16px 0; display: flex; align-items: baseline; gap: 12px; }
   .bar h1 { font-size: 1.1rem; margin: 0; }
   .bar h1 span { color: var(--accent); }
+  .bar .kofi { margin-left: auto; align-self: center; background: var(--accent); color: var(--brand); font-weight: 600; font-size: .85rem; text-decoration: none; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+  .bar .kofi:hover { background: #fff; }
+  @media (max-width: 420px) { #built { display: none; } }
   nav { max-width: 1100px; margin: 0 auto; padding: 0 8px; display: flex; gap: 2px; overflow-x: auto; }
   nav a { color: #cbd5e0; text-decoration: none; padding: 10px 12px; border-bottom: 3px solid transparent; white-space: nowrap; }
   nav a.on { color: #fff; border-bottom-color: var(--accent); }
@@ -98,7 +101,8 @@
 </head>
 <body>
 <header>
-  <div class="bar"><h1>SC <span>BBL</span> Planner</h1><span class="muted" id="built" style="color:#a0aec0"></span></div>
+  <div class="bar"><h1>SC <span>BBL</span> Planner</h1><span class="muted" id="built" style="color:#a0aec0"></span>
+    <a class="kofi" href="https://ko-fi.com/donkware" rel="noopener" target="_blank">Buy me a coffee</a></div>
   <nav id="tabs">
     <a href="#/players" data-tab="players">Players</a>
     <a href="#/planner" data-tab="planner">Planner</a>
