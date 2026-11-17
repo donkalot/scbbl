@@ -120,7 +120,8 @@ def test_players_show_supercoach_price_position_and_ownership(server, page):
     cells = page.locator('#ptable tbody tr', has_text='Mitchell Marsh').locator('td')
     expect(cells.nth(3)).to_have_text('/'.join(sc['pos']))
     expect(cells.nth(4)).to_have_text(f"${sc['price'] / 1000:.1f}k")
-    expect(cells.nth(5)).to_have_text(f"{sc['own']:.1f}")
+    # SC publishes no ownership pre-season, so the cell is blank until it does
+    expect(cells.nth(5)).to_have_text(f"{sc['own']:.1f}" if sc.get('own') is not None else '')
     page.select_option('#pos', 'WKP')
     expect(page.locator('#ptable tbody tr', has_text='Mitchell Marsh')).to_have_count(0)
     page.goto(server + '#/player/' + pid)
