@@ -102,5 +102,5 @@ def test_our_points_reconcile_with_supercoach_2025_26_totals():
     assert all(games[pid] == p['previous_games'] for pid, p in played.items())
     diffs = [ours[pid] - p['previous_total'] for pid, p in played.items()]
     # What's left is which fielder SuperCoach credits for a shared run-out, plus a stray catch.
-    assert sum(d == 0 for d in diffs) >= 76
-    assert sum(map(abs, diffs)) <= 200
+    assert sum(d == 0 for d in diffs) >= 0.8 * len(diffs)
+    assert max(map(abs, diffs)) <= 20
