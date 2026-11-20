@@ -68,6 +68,33 @@ def test_tab_renders(server, page, hash_, heading):
     expect(page.locator('#tabs a.on')).to_have_count(1)
 
 
+CSP_WATCH = "window.csp = []; document.addEventListener('securitypolicyviolation', e => window.csp.push(e.violatedDirective + ' ' + e.blockedURI));"
+
+
+@pytest.mark.parametrize('hash_', ['#/players', '#/planner', '#/team', '#/availability', '#/roles', '#/matches'])
+def test_every_tab_runs_under_the_content_security_policy(server, page, hash_):
+    page.add_init_script(CSP_WATCH)
+    page.goto(server + hash_)
+    expect(page.locator('#app h2').first).to_be_visible()
+    page.wait_for_timeout(300)
+    assert page.evaluate('window.csp') == []
+    assert 'Content-Security-Policy' in page.content()
+
+
+def test_sources_are_labelled_with_their_host(server, page):
+    page.goto(server + '#/roles')
+    links = page.locator('#app a.muted[href^="https://"]')
+    expect(links.first).to_be_visible()
+    for href, text in links.evaluate_all('xs => xs.map(a => [a.href, a.textContent])'):
+        assert text == re.sub(r'^www\.', '', href.split('/')[2]), href
+
+
+@pytest.mark.parametrize('hash_', ['#/players?sort=constructor', '#/players?sort=__proto__', '#/team?sort=toString', '#/team?sort=hasOwnProperty'])
+def test_odd_sort_params_fall_back_to_the_default(server, page, hash_):
+    page.goto(server + hash_)
+    expect(page.locator('#app h2').first).to_be_visible()
+
+
 def test_players_search(server, page):
     page.goto(server + '#/players')
     rows = page.locator('#ptable tbody tr')
@@ -87,10 +114,12 @@ def test_planner_grid_has_every_team_with_ten_games(server, page):
 
 
 def test_player_page_loads_match_log(server, page):
+    page.add_init_script(CSP_WATCH)
     page.goto(server + '#/player/' + _squad_pid('SCO', 'Mitchell Marsh'))
     expect(page.locator('#app h2').first).to_have_text('Mitchell Marsh')
     expect(page.locator('#log tbody tr').first).to_be_visible()
     expect(page.locator('#last5')).not_to_have_text('–')
+    assert page.evaluate('window.csp') == []
 
 
 def test_newcomer_page_shows_other_competitions(server, page):
@@ -320,7 +349,7 @@ def test_bookmarklet_imports_the_team_from_a_logged_in_supercoach_page(server, p
     marsh = _squad_pid('SCO', 'Mitchell Marsh')
     _seed(page, [marsh])
     code = _bookmarklet(page, server)
-    auth = []
+    auth, decoy = [], []
 
     def fake_sc(route):
         if 'statsPlayers' in route.request.url:
@@ -328,26 +357,50 @@ def test_bookmarklet_imports_the_team_from_a_logged_in_supercoach_page(server, p
             if auth[-1] == 'Bearer tok':
                 return route.fulfill(json=SC_TEAM)
             return route.fulfill(status=401, json={'message': 'bad credentials'})
+        # A third-party script on the page loads a lookalike URL last; the token must not go to it.
         route.fulfill(content_type='text/html', body="""<script>
             localStorage.setItem('VMLS:news:accessToken', 'tok');
-            fetch('/2026/api/bbl/classic/v1/userteams/1/statsPlayers?round=1', {headers: {Authorization: 'Bearer tok'}});</script>""")
+            fetch('/2026/api/bbl/classic/v1/userteams/1/statsPlayers?round=1', {headers: {Authorization: 'Bearer tok'}})
+              .then(() => fetch('https://evil.test/2026/api/bbl/classic/v1/userteams/2/statsPlayers?round=1'));</script>""")
     page.route('https://www.supercoach.com.au/**', fake_sc)
+    page.route('https://evil.test/**', lambda r: (decoy.append(r.request.headers.get('authorization')), r.fulfill(json=SC_TEAM, headers={'access-control-allow-origin': '*'})))
     page.goto('https://www.supercoach.com.au/2026/bbl/classic/team')
-    page.wait_for_function("performance.getEntriesByType('resource').some(e => e.name.includes('statsPlayers'))")
+    page.wait_for_function("performance.getEntriesByType('resource').filter(e => e.name.includes('statsPlayers')).length >= 2")
     page.evaluate('c => { (0, eval)(c); }', code)
     expect(page).to_have_url(re.compile(r'#/team\?r=1&sc='))
     assert auth == ['Bearer tok', 'Bearer tok']
+    assert decoy == [None]
     assert 'tok' not in page.url
     expect(page.locator('#import')).to_contain_text('This replaces your squad of 1')
     _check_imported(page, server)
 
 
-def test_bookmarklet_explains_when_not_on_the_team_page(server, page):
+def test_bookmarklet_explains_when_not_on_supercoach_or_not_on_the_team_page(server, page):
     code = _bookmarklet(page, server)
     msgs = []
     page.on('dialog', lambda d: (msgs.append(d.message), d.dismiss()))
     page.evaluate('c => (0, eval)(c)', code)
-    assert msgs == ['Open or reload your team page in SuperCoach BBL, then click this bookmark again.']
+    page.route('https://www.supercoach.com.au/**', lambda r: r.fulfill(content_type='text/html', body='<p>home</p>'))
+    page.goto('https://www.supercoach.com.au/2026/bbl/classic/')
+    page.evaluate('c => (0, eval)(c)', code)
+    assert msgs == ['Open your team page on supercoach.com.au first, logged in, then click this bookmark.',
+                    'Open or reload your team page in SuperCoach BBL, then click this bookmark again.']
+
+
+def test_clicking_a_bookmarklet_on_the_site_does_nothing(server, page):
+    # Without preventDefault the CSP blocks the javascript: URL, which shows up as a violation.
+    page.add_init_script(CSP_WATCH)
+    msgs = []
+    page.on('dialog', lambda d: (msgs.append(d.message), d.dismiss()))
+    page.goto(server + '#/team')
+    page.click('#importhelp summary')
+    page.click('#scbm')
+    page.wait_for_timeout(200)
+    assert page.evaluate('window.csp') == []
+    page.goto(server.replace('index.html', 'tools.html'))
+    page.click('#scsave')
+    page.wait_for_timeout(200)
+    assert page.evaluate('window.csp') == [] and msgs == []
 
 
 def test_pasted_statsplayers_response_imports_the_team(server, page):
@@ -372,7 +425,7 @@ def test_visit_counts_send_the_page_name_only(page):
         route.fulfill(body=f.read_bytes(), content_type={'.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml'}.get(f.suffix, 'text/html'))
     page.route('https://bbl.fantasyplanner.au/**', site)
     held = []
-    page.route('https://gc.zgo.at/count.js', lambda r: held.append(r))
+    page.route('https://bbl.fantasyplanner.au/goatcounter.js', lambda r: held.append(r))
     page.route(re.compile(r'https://(api\.open-meteo\.com|apiv2\.cricket\.com\.au)/.*'), lambda r: r.abort())
     page.goto('https://bbl.fantasyplanner.au/#/team?r=1&sc=98:true,8:vice')
     expect(page.locator('#import')).to_be_visible()
@@ -383,10 +436,32 @@ def test_visit_counts_send_the_page_name_only(page):
         const me = document.currentScript;
         window.counts = [[me.dataset.goatcounter, JSON.parse(me.dataset.goatcounterSettings).no_onload]];
         window.goatcounter = { count: v => window.counts.push(v.path) };""")
-    page.wait_for_function('window.counts && window.counts.length >= 3')
+    page.wait_for_function('() => window.counts && window.counts.length >= 3')
     page.click('#tabs a[data-tab=roles]')
-    page.wait_for_function('window.counts.length >= 4')
+    page.wait_for_function('() => window.counts.length >= 4')
     assert page.evaluate('window.counts') == [['https://scbbl.goatcounter.com/count', True], '/team', '/planner', '/roles']
+
+
+def test_the_real_counter_script_sends_under_the_content_security_policy(page):
+    def site(route):
+        rel = route.request.url.split('.au/', 1)[1].split('#')[0].split('?')[0] or 'index.html'
+        f = ROOT / rel
+        if not f.is_file():
+            return route.fulfill(status=404, body='')
+        route.fulfill(body=f.read_bytes(), content_type={'.js': 'text/javascript', '.json': 'application/json'}.get(f.suffix, 'text/html'))
+    page.route('https://bbl.fantasyplanner.au/**', site)
+    sent = []
+    page.route('https://scbbl.goatcounter.com/**', lambda r: (sent.append(r.request.url), r.fulfill(status=200, body='')))
+    page.route(re.compile(r'https://(api\.open-meteo\.com|apiv2\.cricket\.com\.au)/.*'), lambda r: r.abort())
+    page.add_init_script(CSP_WATCH)
+    page.goto('https://bbl.fantasyplanner.au/#/roles')
+    expect(page.locator('#app h2').first).to_have_text('Roles and news')
+    for _ in range(30):
+        if sent:
+            break
+        page.wait_for_timeout(100)
+    assert page.evaluate('window.csp') == []
+    assert len(sent) == 1 and 'p=%2Froles' in sent[0], sent
 
 
 def _with_stat_round(path, n, owned):
@@ -425,10 +500,13 @@ def test_save_prices_bookmark_downloads_the_three_raw_files(server, page, owned)
                 return route.fulfill(content_type='application/json', body=(raw / name).read_text(encoding='utf-8'))
         route.fulfill(content_type='text/html', body="""<script>
             localStorage.setItem('VMLS:news:accessToken', JSON.stringify('tok'));
-            fetch('/2026/api/bbl/classic/v1/players-cf?embed=notes%2Codds%2Cplayer_stats%2Cpositions&round=0&xredir=1', {headers: {Authorization: 'Bearer tok'}});</script>""")
+            fetch('/2026/api/bbl/classic/v1/players-cf?embed=notes%2Codds%2Cplayer_stats%2Cpositions&round=0&xredir=1', {headers: {Authorization: 'Bearer tok'}})
+              .then(() => fetch('https://evil.test/2026/api/bbl/classic/v1/players-cf?embed=player_stats'));</script>""")
+    decoy = []
     page.route('https://www.supercoach.com.au/**', fake_sc)
+    page.route('https://evil.test/**', lambda r: (decoy.append(r.request.headers.get('authorization')), r.fulfill(json=[], headers={'access-control-allow-origin': '*'})))
     page.goto('https://www.supercoach.com.au/2026/bbl/classic/team')
-    page.wait_for_function("performance.getEntriesByType('resource').some(e => e.name.includes('players-cf'))")
+    page.wait_for_function("performance.getEntriesByType('resource').filter(e => e.name.includes('players-cf')).length >= 2")
     auth.clear(), asked.clear()
     got = []
     page.on('download', lambda d: got.append(d))
@@ -438,6 +516,7 @@ def test_save_prices_bookmark_downloads_the_three_raw_files(server, page, owned)
             break
         page.wait_for_timeout(100)
     assert auth == ['Bearer tok'] * 3
+    assert decoy == [None]
     assert asked == ['1'], "the page asked for round 0, but only settings' next_round carries ownership"
     assert sorted(d.suggested_filename for d in got) == ['fixture.json', 'players-round1.json', 'settings.json']
     page.wait_for_timeout(200)
@@ -611,6 +690,7 @@ def test_match_page_scores_the_replayed_scorecard(server, page):
     _mock_feeds(page, rain_at='2027-01-08T10:00')
     wild = _squad_pid('HEA', 'Jack Wildermuth')
     page.add_init_script(f"localStorage.setItem('scbbl-squad', JSON.stringify(['{wild}']))")
+    page.add_init_script(CSP_WATCH)
     page.goto(server + f'#/match/{HEA_V_SCO}')
     expect(page.locator('#rain .pill')).to_have_text('Rain High')
     def row_of(n):
@@ -624,6 +704,7 @@ def test_match_page_scores_the_replayed_scorecard(server, page):
     expect(row.locator('td.sc')).to_have_text('358 ×2')
     expect(page.locator('#mtotal')).to_have_text('358')
     expect(page.locator('#rtotal')).to_have_text('358')
+    assert page.evaluate('window.csp') == []
 
 
 def test_planner_marks_forecast_rain_for_teams_and_my_squad(server, page):

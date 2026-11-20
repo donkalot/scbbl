@@ -260,6 +260,16 @@ test('a CA scorecard plus its ball-by-ball gives the Cricsheet points, apart fro
   assert.ok(L.caLines(card).some((l, i) => l.dots > lines[i].dots));
 });
 
+test('caLines turns anything in a CA number field that is not a number into 0', () => {
+  const x = '<img src=x onerror=alert(1)>';
+  const card = { players: [{ id: 1, displayName: 'A' }, { id: 2, displayName: 'B' }],
+    fixture: { innings: [{ batsmen: [{ playerId: 1, runsScored: x, ballsFaced: '12', foursScored: null, sixesScored: {}, battingOrder: x, dismissalText: 7 }],
+      bowlers: [{ playerId: 2, totalBallsBowled: x, runsConceded: '30', wicketsTaken: [], dotBalls: x, maidensBowled: undefined, wideBalls: 1, noBalls: x }] }] } };
+  const [a, b] = L.caLines(card, { 2: x });
+  assert.deepEqual([a.r, a.bf, a.f4, a.s6, a.bat_pos, a.how], [0, 12, 0, 0, 0, '7']);
+  assert.deepEqual([b.lb, b.rc, b.wk, b.dots, b.mdn, b.wd, b.nb], [0, 30, 0, 0, 0, 1, 0]);
+});
+
 test('rain bands from forecast hours and from climatology', () => {
   assert.equal(L.rainRisk([]), null);
   assert.equal(L.rainRisk([{ p: 10, mm: 0 }, { p: 20, mm: 0.1 }]).level, 'Low');
@@ -298,4 +308,5 @@ test('CA players map by id, then by surname and initial within the squad', () =>
   assert.equal(L.matchPid({ ca: 2, name: 'Jonathan Bairstow' }, {}, rows), 'a');
   assert.equal(L.matchPid({ ca: 3, name: 'Tom Curran' }, {}, rows), 'b');
   assert.equal(L.matchPid({ ca: 4, name: 'T. Smith' }, {}, rows), null);
+  assert.equal(L.matchPid({ ca: 'constructor', name: 'Tom Curran' }, {}, rows), 'b');
 });

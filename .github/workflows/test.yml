@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   # An unparseable workflow fails as a "workflow file issue" without running a step,
   # so a broken refresh.yml would otherwise go unnoticed until the data went stale.

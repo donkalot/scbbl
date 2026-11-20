@@ -311,6 +311,9 @@
     return out;
   }
 
+  // CA is a third party and these numbers are rendered as HTML, so anything that isn't a number becomes 0.
+  const num = x => (Number.isFinite(+x) ? +x : 0);
+
   function caLines(card, byes = {}) {
     const lines = new Map();
     for (const p of card.players || []) {
@@ -325,10 +328,11 @@
       for (const b of inn.batsmen || []) {
         const l = lines.get(b.playerId);
         if (l && 'runsScored' in b) {
-          Object.assign(l, { r: b.runsScored, bf: b.ballsFaced, f4: b.foursScored, s6: b.sixesScored, out: !!b.isOut,
-                             batted: true, batting: !!b.isBatting, bat_pos: b.battingOrder, how: b.dismissalText || '' });
+          Object.assign(l, { r: num(b.runsScored), bf: num(b.ballsFaced), f4: num(b.foursScored), s6: num(b.sixesScored), out: !!b.isOut,
+                             batted: true, batting: !!b.isBatting, bat_pos: b.battingOrder == null ? null : num(b.battingOrder),
+                             how: String(b.dismissalText || '') });
         }
-        const f = FIELDED[b.dismissalTypeId] && lines.get(b.dismissedByPlayerId);
+        const f = Object.prototype.hasOwnProperty.call(FIELDED, b.dismissalTypeId) && lines.get(b.dismissedByPlayerId);
         if (f) {
           f[FIELDED[b.dismissalTypeId]] += 1;
           if (b.dismissalTypeId === 'RunOut') f.ro_solo += 1;
@@ -337,8 +341,9 @@
       for (const w of inn.bowlers || []) {
         const l = lines.get(w.playerId);
         if (!l) continue;
-        Object.assign(l, { lb: w.totalBallsBowled, rc: w.runsConceded, wk: w.wicketsTaken, dots: w.dotBalls - (byes[w.playerId] || 0), mdn: w.maidensBowled,
-                           wd: w.wideBalls, nb: w.noBalls, bowling: !!(w.isOnStrike || w.isNonStrike) });
+        Object.assign(l, { lb: num(w.totalBallsBowled), rc: num(w.runsConceded), wk: num(w.wicketsTaken),
+                           dots: num(w.dotBalls) - num(byes[w.playerId]), mdn: num(w.maidensBowled),
+                           wd: num(w.wideBalls), nb: num(w.noBalls), bowling: !!(w.isOnStrike || w.isNonStrike) });
       }
     }
     return [...lines.values()];
@@ -372,7 +377,7 @@
 
   // CA player -> our pid: the CA id map first, then surname plus first initial within that team's squad.
   function matchPid(line, idmap, squadRows) {
-    if (idmap[line.ca]) return idmap[line.ca];
+    if (Object.prototype.hasOwnProperty.call(idmap, line.ca) && idmap[line.ca]) return idmap[line.ca];
     const t = normName(line.name);
     const hits = squadRows.filter(r => {
       const s = normName(r.n);

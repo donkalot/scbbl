@@ -87,6 +87,25 @@ async function unsubscribe(body, env) {
   return [200, {}];
 }
 
+// A chunked body has no content-length, so stop reading once it passes the cap rather than buffering it all.
+async function readCapped(req, max) {
+  if (!req.body) return '';
+  const reader = req.body.getReader();
+  const parts = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.length;
+    if (n > max) { await reader.cancel(); return null; }
+    parts.push(value);
+  }
+  const all = new Uint8Array(n);
+  let o = 0;
+  for (const p of parts) { all.set(p, o); o += p.length; }
+  return new TextDecoder().decode(all);
+}
+
 export async function handle(req, env, fetchFn = fetch, now = Date.now()) {
   const origin = req.headers.get('origin');
   const ok = (env.ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean).includes(origin);
@@ -99,8 +118,8 @@ export async function handle(req, env, fetchFn = fetch, now = Date.now()) {
   if (req.method === 'POST' && (path === '/subscribe' || path === '/unsubscribe')) {
     if (!ok) return reply(403, { error: 'origin not allowed' });
     if (Number(req.headers.get('content-length')) > MAX_BODY) return reply(413, { error: 'too large' });
-    const text = await req.text();
-    if (text.length > MAX_BODY) return reply(413, { error: 'too large' });
+    const text = await readCapped(req, MAX_BODY);
+    if (text == null) return reply(413, { error: 'too large' });
     let body;
     try { body = JSON.parse(text); } catch { return reply(400, { error: 'bad json' }); }
     const [status, out] = path === '/subscribe' ? await subscribe(body, env, fetchFn, now) : await unsubscribe(body, env);

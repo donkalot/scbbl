@@ -197,8 +197,18 @@ test('one subscription can only be stored once, whatever the spelling of its end
 test('an oversized content-length is refused before the body is read', async () => {
   const a = api();
   const req = new Request('https://w.test/subscribe', { method: 'POST', headers: { origin: SITE, 'content-type': 'application/json', 'content-length': '999999' }, body: '{}' });
-  req.text = () => assert.fail('body read');
   assert.equal((await handle(req, a.env, a.fetch)).status, 413);
+  assert.equal(req.bodyUsed, false);
+});
+
+test('a chunked body with no content-length stops being read once it passes the cap', async () => {
+  const a = api();
+  let pulled = 0;
+  const body = new ReadableStream({ pull(c) { pulled++; c.enqueue(new TextEncoder().encode(' '.repeat(1024))); } });
+  const req = new Request('https://w.test/subscribe', { method: 'POST', headers: { origin: SITE, 'content-type': 'application/json' }, body, duplex: 'half' });
+  assert.equal(req.headers.get('content-length'), null);
+  assert.equal((await handle(req, a.env, a.fetch)).status, 413);
+  assert.ok(pulled <= 6, `pulled ${pulled} chunks`);
 });
 
 test('fit shortens a long body so the push still encrypts within one record', async () => {

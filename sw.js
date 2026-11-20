@@ -1,4 +1,4 @@
-const CACHE = 'scbbl-v16';
+const CACHE = 'scbbl-v17';
 const APP_SHELL = ['./', './index.html', './logic.js', './app.js', './manifest.json', './icon.svg', './icon-192.png', './badge-96.png'];
 
 self.addEventListener('install', e => {
@@ -19,8 +19,10 @@ self.addEventListener('fetch', e => {
   if (new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
     fetch(e.request).then(r => {
-      const clone = r.clone();
-      caches.open(CACHE).then(c => c.put(e.request, clone));
+      if (r.ok) {
+        const clone = r.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+      }
       return r;
     }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
   );

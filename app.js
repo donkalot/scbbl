@@ -9,13 +9,16 @@
   let grid, leagueRounds, squadOf, seasons, current, projCache;
 
   // ---------- helpers ----------
+  // Object.hasOwn needs iOS 15.4+.
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   const source = u => {
     if (!u) return '';
-    const m = /^https:\/\/(?:www\.)?([^/]+)/.exec(u);
-    return m ? ` <a class="muted" href="${esc(u)}" rel="noopener">${esc(m[1])}</a>` : ` <span class="muted">${esc(u)}</span>`;
+    let host = null;
+    try { const p = new URL(u); if (p.protocol === 'https:') host = p.hostname.replace(/^www\./, ''); } catch { /* plain-text source */ }
+    return host ? ` <a class="muted" href="${esc(u)}" rel="noopener">${esc(host)}</a>` : ` <span class="muted">${esc(u)}</span>`;
   };
   const fix = (v, d = 1) => (v == null || !isFinite(v) ? '–' : v.toFixed(d));
   const team = t => `<span class="team t-${esc(t || 'TBC')}">${esc(t || 'TBC')}</span>`;
@@ -74,6 +77,8 @@
     b.title = `${added ? 'Remove from' : 'Add to'} my squad`;
     if (b.dataset.rerender) route();
   });
+  // Bookmarklet links are for dragging to the bookmarks bar; clicking one here does nothing.
+  $app.addEventListener('click', e => { if (e.target.closest('a[href^="javascript:"]')) e.preventDefault(); });
 
   const name = pid => (squadOf[pid] && squadOf[pid].n) || (D.players[pid] && D.players[pid].n) || pid;
   function projOf(pid) {
@@ -168,7 +173,7 @@
         (!st.team || (r.sq ? r.sq.team : r.lastTeam) === st.team) &&
         (!st.pos || (r.sc && r.sc.pos.includes(st.pos))) &&
         (!q || r.n.toLowerCase().includes(q)));
-      list.sort(sorters[st.sort] || sorters.proj);
+      list.sort(own(sorters, st.sort) ? sorters[st.sort] : sorters.proj);
       const shown = list.slice(0, 200);
       const th = (key, label) => `<th${key === 'name' ? ' class="l"' : ''}><a href="#" data-sort="${key}">${label}${st.sort === key ? ' ▾' : ''}</a></th>`;
       document.getElementById('ptable').innerHTML = `
@@ -463,7 +468,8 @@
   function bookmarklet() {
     const site = location.href.split('#')[0];
     const code = `(async()=>{try{
-const u=performance.getEntriesByType('resource').map(e=>e.name).filter(n=>/\\/api\\/bbl\\/classic\\/v1\\/userteams\\/\\d+\\/statsPlayers/.test(n)).pop();
+if(location.hostname!=='www.supercoach.com.au')return alert('Open your team page on supercoach.com.au first, logged in, then click this bookmark.');
+const u=performance.getEntriesByType('resource').map(e=>e.name).filter(n=>new URL(n).origin===location.origin&&/\\/api\\/bbl\\/classic\\/v1\\/userteams\\/\\d+\\/statsPlayers/.test(new URL(n).pathname)).pop();
 if(!u)return alert('Open or reload your team page in SuperCoach BBL, then click this bookmark again.');
 let t=localStorage.getItem('VMLS:news:accessToken');try{const j=JSON.parse(t);t=typeof j=='string'?j:j&&(j.accessToken||j.access_token||j.token)}catch(e){}
 if(!t)return alert('Log in to SuperCoach first.');
@@ -495,7 +501,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     }
     return {
       html: `<details class="card" id="importhelp"><summary><b>Import your team from SuperCoach</b></summary>
-        <p>Drag this link to your bookmarks bar: <a id="scbm" class="pill" href="${esc(bookmarklet())}" onclick="event.preventDefault()">SC BBL import</a>.
+        <p>Drag this link to your bookmarks bar: <a id="scbm" class="pill" href="${esc(bookmarklet())}">SC BBL import</a>.
           Then open your team page on supercoach.com.au, logged in, and click the bookmark. It brings your squad, on-field picks and captain here.
           It runs in your own browser and sends nothing but player numbers to this site: your login stays on SuperCoach.</p>
         <p class="muted">On a phone: <button id="copybm">Copy the bookmark</button>, save any page as a bookmark, edit it, paste this over its address and name it "SC BBL import". On your team page, type that name in the address bar and pick the bookmark.</p>
@@ -551,7 +557,8 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
         total: p => p.g.exp,
         cheap: p => -p.price,
       };
-      opts.sort((a, b) => keys[sort](b) - keys[sort](a));
+      const by = own(keys, sort) ? keys[sort] : keys.proj;
+      opts.sort((a, b) => by(b) - by(a));
       const outProj = out ? proj(out) : null;
       const qs = out ? `out=${encodeURIComponent(out)}` : `pick=${pick}`;
       const noTrade = out && locked && !ts.roundLeft;
@@ -820,11 +827,12 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
   // From the toss (~T-30) until well after the scheduled finish, allowing for delays.
   const near = m => Date.now() > Date.parse(m.start) - 90 * 60e3 && Date.now() < Date.parse(m.end) + 3 * 3600e3;
 
+  const numOrNull = x => (x == null || !Number.isFinite(+x) ? null : +x);
   function forecast(v) {
     const k = `${v.lat},${v.lon}`;
     return forecasts[k] || (forecasts[k] = fetch(`${FORECAST}&latitude=${v.lat}&longitude=${v.lon}`)
       .then(r => (r.ok ? r.json() : null))
-      .then(j => j && Object.fromEntries(j.hourly.time.map((t, i) => [t, { p: j.hourly.precipitation_probability[i], mm: j.hourly.precipitation[i] }])))
+      .then(j => j && Object.fromEntries(j.hourly.time.map((t, i) => [t, { p: numOrNull(j.hourly.precipitation_probability[i]), mm: numOrNull(j.hourly.precipitation[i]) }])))
       .catch(() => null));
   }
 
@@ -953,7 +961,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     }
   }
 
-  const PUSH_API = localStorage.getItem('scbbl-push-api') || 'https://scbbl-notify.donkalot.workers.dev';
+  const PUSH_API = 'https://scbbl-notify.donkalot.workers.dev';
   const ALERTS_KEY = 'scbbl-alerts';
   const pushable = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   const appleMobile = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
@@ -1100,10 +1108,10 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     const spin = sp && SPIN_LEAN[sp.lean], econ = sp && ECON_LEAN[sp.econ_lean];
     const fresh = v.notes.some(x => Date.now() - Date.parse(x.date) < PITCH_NEWS_DAYS * 864e5);
     return [
-      lean && `<span class="pill ${lean[0]}" title="First innings ${h.diff > 0 ? '+' : ''}${fix(h.diff, 0)} runs on the league average over ${h.n} full games">${lean[1]}</span>`,
-      spin && `<span class="pill" title="Spinners ${fix(sp.spin)} and pacers ${fix(sp.pace)} SC points an over here over ${sp.n} games">${spin}</span>`,
-      econ && `<span class="pill" title="Spinners went for ${fix(sp.econ_spin)} and pacers ${fix(sp.econ_pace)} runs an over here over ${sp.n} games">${econ}</span>`,
-      n && n.changed && `<span class="pill" title="This season's first innings here are ${n.changed} than this ground's usual">${n.changed === 'higher' ? 'Scoring up' : 'Scoring down'} this season</span>`,
+      lean && `<span class="pill ${lean[0]}" title="First innings ${h.diff > 0 ? '+' : ''}${fix(h.diff, 0)} runs on the league average over ${esc(h.n)} full games">${lean[1]}</span>`,
+      spin && `<span class="pill" title="Spinners ${fix(sp.spin)} and pacers ${fix(sp.pace)} SC points an over here over ${esc(sp.n)} games">${spin}</span>`,
+      econ && `<span class="pill" title="Spinners went for ${fix(sp.econ_spin)} and pacers ${fix(sp.econ_pace)} runs an over here over ${esc(sp.n)} games">${econ}</span>`,
+      n && n.changed && `<span class="pill" title="This season's first innings here are ${esc(n.changed)} than this ground's usual">${n.changed === 'higher' ? 'Scoring up' : 'Scoring down'} this season</span>`,
       fresh && '<span class="pill">Pitch news</span>',
     ].filter(Boolean).join(' ');
   }
@@ -1113,16 +1121,16 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     if (!v) return '';
     const h = v.hist, n = v.now;
     const runs = d => `${d >= 0 ? '+' : '−'}${fix(Math.abs(d), 0)}`;
-    const games = k => `${k} full game${k === 1 ? '' : 's'}`;
-    const span = V.window ? `${V.window[0]}–${V.window[1]}` : 'recent seasons';
-    const verdict = !h ? '' : h.lean === 'even' ? 'no clear lean either way' : h.lean ? `${h.lean}-friendly` : 'too few games to call';
+    const games = k => `${esc(k)} full game${k === 1 ? '' : 's'}`;
+    const span = V.window ? `${esc(V.window[0])}–${esc(V.window[1])}` : 'recent seasons';
+    const verdict = !h ? '' : h.lean === 'even' ? 'no clear lean either way' : h.lean ? `${esc(h.lean)}-friendly` : 'too few games to call';
     return `<div class="card"><b>Pitch</b> ${pitchPills(v)}
       <p style="margin:6px 0 0">${h
-        ? `First innings here averaged <b>${h.par}</b> over ${games(h.n)} in ${span}, ${runs(h.diff)} runs on the league in the same seasons: ${verdict}.`
+        ? `First innings here averaged <b>${esc(h.par)}</b> over ${games(h.n)} in ${span}, ${runs(h.diff)} runs on the league in the same seasons: ${verdict}.`
         : `No full BBL games here in ${span}, so there's nothing to go on.`}</p>
-      ${h ? `<p class="muted" style="margin:4px 0 0">${h.seasons.map(s => `${esc(s.s)}: ${s.par} (${s.n})`).join(' · ')}</p>` : ''}
+      ${h ? `<p class="muted" style="margin:4px 0 0">${h.seasons.map(s => `${esc(s.s)}: ${esc(s.par)} (${esc(s.n)})`).join(' · ')}</p>` : ''}
       <p style="margin:6px 0 0">${n
-        ? `This season (${esc(V.season)}): <b>${n.par}</b> over ${games(n.n)}, ${runs(n.diff)} on the league${n.changed ? `. That's ${n.changed} than usual here, by more than chance would explain` : h && h.lean ? ', in line with its usual' : ''}.`
+        ? `This season (${esc(V.season)}): <b>${esc(n.par)}</b> over ${games(n.n)}, ${runs(n.diff)} on the league${n.changed ? `. That's ${esc(n.changed)} than usual here, by more than chance would explain` : h && h.lean ? ', in line with its usual' : ''}.`
         : `No full games here yet this season (${esc(V.season)}). This updates daily as results come in.`}</p>
       ${spinLine(v.spin, V, span)}
       ${v.notes.length ? `<div class="feed" style="margin-top:6px">${v.notes.map(x => `<div class="item"><span class="date">${newsDay(x.date)}</span><span>${esc(x.text)}${source(x.source)}</span></div>`).join('')}</div>` : ''}
@@ -1132,9 +1140,9 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
   function spinLine(sp, V, span) {
     if (!sp) return `<p style="margin:6px 0 0">Spin against pace: no games here in ${span} where both bowled at least 3 overs.</p>`;
     const L = V.spin;
-    const verdict = sp.lean === 'even' ? 'no clear lean either way' : sp.lean ? `${sp.lean}-friendly` : 'too few games to call';
+    const verdict = sp.lean === 'even' ? 'no clear lean either way' : sp.lean ? `${esc(sp.lean)}-friendly` : 'too few games to call';
     const econVerdict = sp.econ_lean === 'even' ? 'no clear lean either way' : sp.econ_lean ? `${sp.econ_lean === 'spin' ? 'spinners' : 'pacers'} economical here` : 'too few games to call';
-    return `<p style="margin:6px 0 0">Spin against pace: spinners scored <b>${fix(sp.spin)}</b> SC points an over here and pacers <b>${fix(sp.pace)}</b>, over ${sp.n} game${sp.n === 1 ? '' : 's'} (league ${fix(L.spin)} and ${fix(L.pace)}). That's ${sp.diff >= 0 ? '+' : '−'}${fix(Math.abs(sp.diff))} an over for spin on the league's gap: ${verdict}.</p>
+    return `<p style="margin:6px 0 0">Spin against pace: spinners scored <b>${fix(sp.spin)}</b> SC points an over here and pacers <b>${fix(sp.pace)}</b>, over ${esc(sp.n)} game${sp.n === 1 ? '' : 's'} (league ${fix(L.spin)} and ${fix(L.pace)}). That's ${sp.diff >= 0 ? '+' : '−'}${fix(Math.abs(sp.diff))} an over for spin on the league's gap: ${verdict}.</p>
       <p style="margin:6px 0 0">Economy: spinners went for <b>${fix(sp.econ_spin)}</b> an over here and pacers <b>${fix(sp.econ_pace)}</b> (league ${fix(L.econ_spin)} and ${fix(L.econ_pace)}). Spin was ${fix(Math.abs(sp.econ_diff))} runs an over ${sp.econ_diff >= 0 ? 'tighter' : 'looser'} than the league's gap: ${econVerdict}.</p>`;
   }
 
@@ -1259,7 +1267,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
     const s = document.createElement('script');
     s.id = 'goatcounter';
     s.async = true;
-    s.src = 'https://gc.zgo.at/count.js';
+    s.src = 'goatcounter.js';
     s.dataset.goatcounter = 'https://scbbl.goatcounter.com/count';
     s.dataset.goatcounterSettings = JSON.stringify({ no_onload: true });
     s.onload = () => {
