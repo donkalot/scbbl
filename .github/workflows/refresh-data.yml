@@ -41,8 +41,19 @@ jobs:
           key: ca-${{ hashFiles('pipeline/register.py') }}
           restore-keys: ca-
 
+      # The last good Cricsheet zip, for load_zip to fall back on if the download is refused.
+      # A new key each run saves the newest copy; restore-keys picks up the most recent one.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/bbl_json.zip
+          key: cricsheet-${{ github.run_id }}
+          restore-keys: cricsheet-
+
       - name: Download, rebuild, run guards
         run: python -m pipeline.build
+        env:
+          # Always try a fresh zip here; the restored one is only the fallback.
+          CRICSHEET_MAX_AGE_H: '0'
 
       - name: Commit if changed
         run: |

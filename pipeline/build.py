@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timezone
 
 from . import climate, cricsheet, elsewhere, fixture, guards, register, roles, sc_import, squads, venues
@@ -44,7 +45,7 @@ def compact_match(m):
 
 
 def main():
-    by_season = cricsheet.parse_all(cricsheet.load_zip())
+    by_season = cricsheet.parse_all(cricsheet.load_zip(float(os.environ.get('CRICSHEET_MAX_AGE_H', 12))))
     idmap_path = DATA / 'idmap.json'
     previous = json.loads(idmap_path.read_text()) if idmap_path.exists() else {}
     idmap, ca_names, kinds = register.ca_idmap(by_season, previous)

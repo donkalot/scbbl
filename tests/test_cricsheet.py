@@ -1,6 +1,14 @@
+import io
 import json
+import os
+import time
+import urllib.error
+import zipfile
 from pathlib import Path
 
+import pytest
+
+from pipeline import cricsheet
 from pipeline.cricsheet import parse_match
 
 FX = Path(__file__).parent / 'fixtures'
@@ -115,3 +123,65 @@ def test_innings_totals_match_official_scorecard():
     overs = lambda s: int(s.split('.')[0]) * 6 + int(s.split('.')[1])
     assert [(i['runs'], i['balls'], i['wk']) for i in meta['inns']] == [
         (i['runsScored'], overs(i['oversBowled']), i['numberOfWicketsFallen']) for i in ca['fixture']['innings']]
+
+
+def _zip_bytes(name):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w') as z:
+        z.writestr(f'{name}.json', '{}')
+    return buf.getvalue()
+
+
+def _cache(tmp_path, monkeypatch, age_h, fetch):
+    monkeypatch.setattr(cricsheet, 'CACHE', tmp_path)
+    monkeypatch.setattr(cricsheet, 'fetch', fetch)
+    p = tmp_path / 'bbl_json.zip'
+    p.unlink(missing_ok=True)
+    if age_h is not None:
+        p.write_bytes(_zip_bytes('old'))
+        t = time.time() - age_h * 3600
+        os.utime(p, (t, t))
+
+
+def _refused(url):
+    raise urllib.error.HTTPError(url, 403, 'Forbidden', {}, None)
+
+
+def _not_called(url):
+    raise AssertionError('refetched a fresh cache')
+
+
+def test_a_refused_download_falls_back_to_a_recent_cached_zip(tmp_path, monkeypatch, capsys):
+    _cache(tmp_path, monkeypatch, 30, _refused)
+    assert cricsheet.load_zip().namelist() == ['old.json']
+    assert '::warning::Cricsheet download failed' in capsys.readouterr().out
+
+
+def test_a_refused_download_still_fails_with_no_cache_or_an_old_one(tmp_path, monkeypatch):
+    for age in (None, 100):
+        _cache(tmp_path, monkeypatch, age, _refused)
+        with pytest.raises(urllib.error.HTTPError):
+            cricsheet.load_zip()
+
+
+def test_a_download_replaces_a_day_old_cache_and_a_fresh_one_is_not_refetched(tmp_path, monkeypatch):
+    _cache(tmp_path, monkeypatch, 30, lambda url: _zip_bytes('new'))
+    assert cricsheet.load_zip().namelist() == ['new.json']
+    monkeypatch.setattr(cricsheet, 'fetch', _not_called)
+    assert cricsheet.load_zip().namelist() == ['new.json']
+
+
+def test_a_page_that_is_not_a_zip_is_treated_as_refused_and_never_overwrites_the_cache(tmp_path, monkeypatch, capsys):
+    challenge = lambda url: b'<html>Just a moment...</html>'
+    _cache(tmp_path, monkeypatch, 30, challenge)
+    assert cricsheet.load_zip().namelist() == ['old.json']
+    assert 'not a zip' in capsys.readouterr().out
+    _cache(tmp_path, monkeypatch, None, challenge)
+    with pytest.raises(OSError, match='not a zip'):
+        cricsheet.load_zip()
+    assert not (tmp_path / 'bbl_json.zip').exists()
+
+
+def test_max_age_zero_refetches_even_a_fresh_cache(tmp_path, monkeypatch):
+    _cache(tmp_path, monkeypatch, 0.1, lambda url: _zip_bytes('new'))
+    assert cricsheet.load_zip(max_age_h=0).namelist() == ['new.json']

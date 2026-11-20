@@ -11,11 +11,23 @@ BOWLER_WICKETS = {'bowled', 'caught', 'caught and bowled', 'lbw', 'stumped', 'hi
 NOT_OUT_KINDS = {'retired hurt', 'retired not out'}
 
 
-def load_zip(max_age_h=12):
+def load_zip(max_age_h=12, stale_ok_h=84):
     path = CACHE / 'bbl_json.zip'
-    if not path.exists() or time.time() - path.stat().st_mtime > max_age_h * 3600:
-        CACHE.mkdir(exist_ok=True)
-        path.write_bytes(fetch(ZIP_URL))
+    age_h = (time.time() - path.stat().st_mtime) / 3600 if path.exists() else None
+    if age_h is None or age_h > max_age_h:
+        try:
+            data = fetch(ZIP_URL)
+            if not zipfile.is_zipfile(io.BytesIO(data)):
+                raise OSError(f'got {len(data)} bytes that are not a zip')
+        except OSError as e:
+            # Cricsheet sometimes 403s GitHub's runners for a run; a recent copy beats a red refresh.
+            # 84h lets three daily runs miss and fails the fourth, so a real outage still gets noticed.
+            if age_h is None or age_h > stale_ok_h:
+                raise
+            print(f'::warning::Cricsheet download failed ({e}); using the cached zip from {age_h:.0f}h ago')
+        else:
+            CACHE.mkdir(exist_ok=True)
+            path.write_bytes(data)
     return zipfile.ZipFile(io.BytesIO(path.read_bytes()))
 
 
