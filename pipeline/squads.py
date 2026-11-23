@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 from .common import CURATED
 from .register import norm
@@ -60,3 +61,33 @@ def link(rows, squads):
             if not row['pid']:
                 missing.append(f"{row['team']} {row['player']}")
     return missing
+
+
+def _iso(v):
+    try:
+        return date.fromisoformat(v).isoformat() == v
+    except (TypeError, ValueError):
+        return False
+
+
+def check_availability(avail):
+    """Dates are compared as strings, so they must be exact ISO dates; a link to a missing event would do nothing."""
+    problems, events, bad = [], {}, set()
+    for e in avail['events']:
+        if e['id'] in events:
+            problems.append(f"event {e['id']!r} is listed twice")
+        events[e['id']] = e
+        if not (_iso(e.get('start')) and _iso(e.get('end')) and e['start'] <= e['end']):
+            problems.append(f"event {e['id']!r} dates {e.get('start')!r}..{e.get('end')!r} are not an ISO date range")
+            bad.add(e['id'])
+    for link in avail['links']:
+        who, e = f"{link.get('team')} {link.get('player')}", events.get(link.get('event'))
+        if not e:
+            problems.append(f"{who} links to unknown event {link.get('event')!r}")
+            continue
+        if e['id'] in bad:
+            continue
+        start, end = link.get('from', e['start']), link.get('until', e['end'])
+        if not (_iso(start) and _iso(end) and e['start'] <= start <= end <= e['end']):
+            problems.append(f"{who} on {e['id']}: from/until {start!r}..{end!r} must be ISO dates within {e['start']}..{e['end']}")
+    return problems

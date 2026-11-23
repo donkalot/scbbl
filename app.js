@@ -801,7 +801,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
         <thead><tr><th class="l">Player</th><th class="l">Team</th><th class="l">Reason</th><th>Games missed</th><th class="l">Matches</th></tr></thead>
         <tbody>${affected.map(a => `<tr><td class="l name">${link(a.pid)}</td><td class="l">${a.sq ? team(a.sq.team) : ''}</td><td class="l">${a.out.map(e => `${esc(e.name)}${e.likely ? ' <span class="pill warn">likely</span>' : ''}`).join('<br>')}</td>
           <td>${a.games.length}</td><td class="l muted">${a.games.map(m => `${a.sq.team === m.home ? 'v' : '@'} ${m.home === a.sq.team ? m.away : m.home} ${shortDay(L.localDate(m.start))}`).join(', ')}</td></tr>`).join('')}</tbody></table></div>` : ''}
-      <p class="muted">"Likely" means the squad isn't named yet: those players were in the last Test squad, and their games still count as missed in the planner.</p>`;
+      <p class="muted">Australia's Test squad misses the BBL for the whole series, not just Test days, until a player is released: since 2019/20, Test XI players have played almost no BBL games between Tests. "Likely" means the squad isn't named yet: those players were in the last Test squad, and their games still count as missed in the planner.</p>`;
   }
 
   // ---------- roles ----------

@@ -15,8 +15,9 @@ Search the web for BBL|16 news since the last check that changes the hand-curate
 ## Files
 - `curated/availability.json`
   - `events`: `{id, name, kind (test|intl|league|injury|personal), start, end (YYYY-MM-DD, AEDT), verified, source}`.
-  - `links`: `{team, player, event, likely?}`.
+  - `links`: `{team, player, event, likely?, from?, until?}`. `from` and `until` (YYYY-MM-DD, inside the event's dates) narrow the event for that one player.
   - A player's event uses kind `personal` or `injury`. Multi-player events are `test`, `intl` or `league`.
+  - Australia's Test squad misses the BBL for the whole home series, not just Test days, until Cricket Australia releases them. Link squad players to the series event (`aus-nz-tests`). If a player is released to play BBL, set `until` on his link to the last day he's unavailable; if the report gives no date, use the day the release was announced. If a player joins the squad mid-series (a call-up or injury cover), set `from` to the day he joined. If a released player is recalled, add a second link with `from`. If a player is dropped or released before the series starts, delete his link instead.
 - `curated/notes.json`: `{date, team, player, text, source}`, newest relevant first. Write `text` as one or two plain sentences of fact.
 - `curated/squads.json`: `teams.<TEAM>` player lists and `captains`. Team codes: HEA HUR REN SCO SIX STA STR THU.
 - `curated/venues.json`: keyed by cricket.com.au venue id. Pitch news goes in that ground's `notes` as `{date, text, source}`, written like notes.json. Leave `cricsheet` (the ground's names in Cricsheet) alone unless the build fails asking for a new name; then add the exact name it prints.

@@ -69,6 +69,7 @@ def main():
     notes = json.loads((CURATED / 'notes.json').read_text(encoding='utf-8'))
     unknown = squads.link(avail['links'], sq) + squads.link(notes, sq)
     guards.fail_if([f'curated entry names {u}, who is not in that squad' for u in unknown], 'curated')
+    guards.fail_if(squads.check_availability(avail), 'availability')
     draft_rounds = json.loads((CURATED / 'rounds.json').read_text(encoding='utf-8'))
     sc, official_rounds, problems, sc_notes = sc_import.build(sq, fx, draft_rounds)
     guards.fail_if(problems, 'supercoach')

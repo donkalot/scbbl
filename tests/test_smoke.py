@@ -193,6 +193,18 @@ def test_players_round_column_skips_games_the_player_misses(server, page):
         assert abs(float(val) - available * float(tds.nth(6).inner_text())) <= 1.5 * max(available, 1)
 
 
+def test_test_squad_players_miss_the_games_between_tests(server, page):
+    # The Sixers' round 1 double falls on 15 Dec, between the first two Tests, and 17-19 Dec, during the second.
+    page.goto(server + '#/players?q=steve smith&r=1')
+    cell = _round_cell(page, 'Steve Smith')
+    expect(cell).to_contain_text('×0/2')
+    expect(cell).to_have_class(re.compile(r'\bgx\b'))
+    rounds = json.loads((ROOT / 'data' / 'rounds.json').read_text(encoding='utf-8'))['rounds']
+    after = next(r['round'] for r in rounds if r['start'] <= '2027-01-15' <= r['end'])
+    page.select_option('#rnd', str(after))
+    expect(_round_cell(page, 'Steve Smith')).not_to_have_class(re.compile(r'\bgx\b'))
+
+
 def test_players_round_param_falls_back_and_the_default_stays_out_of_the_url(server, page):
     # Mid-season, so the default is the round in progress rather than round 1.
     page.clock.set_fixed_time('2027-01-03T12:00:00+11:00')

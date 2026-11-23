@@ -46,6 +46,22 @@ test('availability removes games that fall inside a linked event', () => {
   assert.equal(L.playerRounds('HEA', 'p2', grid, availability)[1].available, 1);
 });
 
+test('a link from/until narrows the event to that player', () => {
+  const grid = { HEA: { 1: [{ start: '2026-12-10T08:15:00Z' }, { start: '2026-12-15T08:15:00Z' }, { start: '2026-12-19T08:15:00Z' }] } };
+  const availability = {
+    events: [{ id: 's', start: '2026-12-09', end: '2027-01-08' }],
+    links: [{ pid: 'released', event: 's', until: '2026-12-13' }, { pid: 'called', event: 's', from: '2026-12-17' },
+      { pid: 'twice', event: 's', until: '2026-12-11' }, { pid: 'twice', event: 's', from: '2026-12-19' }, { pid: 'whole', event: 's' }],
+  };
+  const played = pid => L.playerRounds('HEA', pid, grid, availability)[1].played.map(m => m.start.slice(5, 10));
+  assert.deepEqual(played('released'), ['12-15', '12-19']);
+  assert.deepEqual(played('called'), ['12-10', '12-15']);
+  assert.deepEqual(played('twice'), ['12-15']);
+  assert.deepEqual(played('whole'), []);
+  assert.deepEqual(L.eventsFor('released', availability).map(e => [e.start, e.end]), [['2026-12-09', '2026-12-13']]);
+  assert.equal(availability.events[0].end, '2027-01-08');
+});
+
 test('seasonOf maps a day to its BBL season', () => {
   assert.equal(L.seasonOf('2026-12-12'), '2026/27');
   assert.equal(L.seasonOf('2027-01-26'), '2026/27');

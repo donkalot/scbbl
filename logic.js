@@ -34,9 +34,11 @@
   }
 
   // A link marked likely is a squad not yet named; it still counts as missed, so plans stay conservative.
+  // A link's from/until narrow the event for that player: called up mid-series, or released to play BBL.
   function eventsFor(pid, availability) {
-    const likely = new Map(availability.links.filter(l => l.pid === pid).map(l => [l.event, !!l.likely]));
-    return availability.events.filter(e => likely.has(e.id)).map(e => ({ ...e, likely: likely.get(e.id) }));
+    const mine = availability.links.filter(l => l.pid === pid);
+    return availability.events.flatMap(e => mine.filter(l => l.event === e.id)
+      .map(l => ({ ...e, start: l.from || e.start, end: l.until || e.end, likely: !!l.likely })));
   }
 
   // Per round: games the player's team plays, and which of those clash with the player's events.

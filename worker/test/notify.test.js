@@ -97,7 +97,7 @@ test('T-60 reminder is pushed, encrypted and VAPID-signed, once to each follower
 
 test('reminder still goes out when the forecast fails, and lists unavailable players', async () => {
   const w = await world({ forecast: false, follow: { all: ['all'] } });
-  DATA.availability = { ...DATA.availability, links: [...DATA.availability.links, { pid: DATA.squads.teams.HEA[0].pid, event: 'aus-nz-t4' }] };
+  DATA.availability = { ...DATA.availability, links: [...DATA.availability.links, { pid: DATA.squads.teams.HEA[0].pid, event: 'aus-nz-tests' }] };
   try {
     await w.tick(-60);
   } finally {
@@ -105,7 +105,7 @@ test('reminder still goes out when the forecast fails, and lists unavailable pla
   }
   const body = w.pushes[0].msg.body;
   assert.doesNotMatch(body, /Rain risk/);
-  assert.match(body, new RegExp(`Unavailable: ${DATA.squads.teams.HEA[0].n} \\(HEA\\): Australia v New Zealand, 4th Test`));
+  assert.match(body, new RegExp(`Unavailable: ${DATA.squads.teams.HEA[0].n} \\(HEA\\): Australia v New Zealand Tests`));
 });
 
 test('XI alert waits for the toss, then names the XIs and who missed out', async () => {

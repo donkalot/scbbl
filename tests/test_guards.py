@@ -1,8 +1,10 @@
+import json
 from datetime import date, timedelta
 
 import pytest
 
-from pipeline import fixture, guards
+from pipeline import fixture, guards, squads
+from pipeline.common import CURATED
 
 TEAMS = ['HEA', 'HUR', 'REN', 'SCO', 'SIX', 'STA', 'STR', 'THU']
 
@@ -95,3 +97,39 @@ def test_shrunken_source_fails_and_baseline_only_rises():
                             {'ssh': 210, 'hnd': 201})
     assert raised == {'season_matches': {'2024/25': 44, '2025/26': 44}, 'players': 400,
                       'comp_matches': {'hnd': 201, 'ssh': 218}}
+
+
+def _avail(**link):
+    return {'events': [{'id': 's', 'start': '2026-12-09', 'end': '2027-01-08'}],
+            'links': [{'team': 'SIX', 'player': 'Steve Smith', 'event': 's', **link}]}
+
+
+def test_curated_availability_passes():
+    assert squads.check_availability(json.loads((CURATED / 'availability.json').read_text(encoding='utf-8'))) == []
+
+
+@pytest.mark.parametrize('link', [{}, {'until': '2026-12-13'}, {'from': '2026-12-17'},
+                                  {'from': '2026-12-09', 'until': '2027-01-08'}, {'from': '2026-12-20', 'until': '2026-12-20'}])
+def test_good_links_pass(link):
+    assert squads.check_availability(_avail(**link)) == []
+
+
+@pytest.mark.parametrize('link', [
+    {'event': 'nope'}, {'until': '2027-01-09'}, {'from': '2026-12-08'}, {'from': '2026-12-20', 'until': '2026-12-19'},
+    {'until': '13 Dec'}, {'until': '2026-12-1'}, {'from': 20261217}, {'until': None},
+])
+def test_bad_links_are_caught(link):
+    assert squads.check_availability(_avail(**link))
+
+
+@pytest.mark.parametrize('event', [{'start': '2027-01-09'}, {'end': '9 Jan'}, {'start': None}, {'start': 20261209}])
+def test_bad_event_dates_are_caught_without_crashing(event):
+    a = _avail(**{'from': '2026-12-17'})
+    a['events'][0].update(event)
+    assert any("event 's' dates" in p for p in squads.check_availability(a))
+
+
+def test_duplicate_event_ids_are_caught():
+    a = _avail()
+    a['events'].append(dict(a['events'][0]))
+    assert squads.check_availability(a)
