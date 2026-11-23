@@ -100,6 +100,8 @@
   }
   const teamOf = pid => squadOf[pid] && squadOf[pid].team;
   const expIn = (pid, x) => (x ? L.expected(proj(pid), x.played, teamOf(pid)) : 0);
+  const gameCls = n => (n === 0 ? 'g0' : n >= 3 ? 'g3' : n === 2 ? 'g2' : '');
+  const nextRound = () => leagueRounds.find(r => r.round === L.tradeRound(D.fixture, leagueRounds, Date.now())) || leagueRounds[leagueRounds.length - 1];
   function link(pid) {
     return `<a href="#/player/${encodeURIComponent(pid)}">${esc(name(pid))}</a>`;
   }
@@ -127,7 +129,9 @@
 
   // ---------- players ----------
   function viewPlayers(params) {
-    const st = { q: params.get('q') || '', team: params.get('team') || '', pos: params.get('pos') || '', scope: params.get('scope') || 'squad', sort: params.get('sort') || 'proj' };
+    const defRound = nextRound().round;
+    const st = { q: params.get('q') || '', team: params.get('team') || '', pos: params.get('pos') || '', scope: params.get('scope') || 'squad', sort: params.get('sort') || 'proj',
+                 r: leagueRounds.some(x => x.round === Number(params.get('r'))) ? Number(params.get('r')) : defRound };
     $app.innerHTML = `
       <h2>Players</h2>
       <div class="row card">
@@ -139,8 +143,10 @@
           <option value="mine"${st.scope === 'mine' ? ' selected' : ''}>My squad</option>
           <option value="all"${st.scope === 'all' ? ' selected' : ''}>Everyone since 2011</option>
         </select>
+        <select id="rnd" aria-label="Round">${leagueRounds.map(r => `<option value="${r.round}"${r.round === st.r ? ' selected' : ''}>Round ${r.round}</option>`).join('')}</select>
       </div>
-      <p class="muted">Proj = expected SC points a game: the last two BBL seasons (plus this one) pulled towards the league average of ${L.PROJ.mean}, harder the fewer games, nudged by T20 form elsewhere for players with few BBL games. Players with no recent BBL games get a flat value by type (see the player page). T20 elsewhere = SC points per game in T20Is and franchise T20 leagues over the last 12 months, scored with the same table (games in brackets; under 5 games sorts last). Squads as of ${esc(D.squads.as_of)}.</p>
+      <p class="muted">Proj = expected SC points a game: the last two BBL seasons (plus this one) pulled towards the league average of ${L.PROJ.mean}, harder the fewer games, nudged by T20 form elsewhere for players with few BBL games. Players with no recent BBL games get a flat value by type (see the player page).
+        The round column (pick the round above) adds up Proj over the games the player is available for that round, so a double counts twice, ${fix(L.HOME_EDGE, 2)} up at home and down away; ×2 is the number of games. Green = double, red = bye. T20 elsewhere = SC points per game in T20Is and franchise T20 leagues over the last 12 months, scored with the same table (games in brackets; under 5 games sorts last). Squads as of ${esc(D.squads.as_of)}.</p>
       ${scNote()}
       <div class="scroll"><table id="ptable"></table></div>`;
     const latest = seasons[seasons.length - 1];
@@ -151,12 +157,21 @@
       const a = p && p.s[latest];
       const lastSeason = p ? Object.keys(p.s).sort().pop() : null;
       return { pid, n: name(pid), sq: squadOf[pid], sc: sc(pid), last: a ? L.seasonLine(a) : null, a, proj: proj(pid),
-               lastTeam: lastSeason && p.s[lastSeason].t, lastSeason };
+               lastTeam: lastSeason && p.s[lastSeason].t, lastSeason, rounds: squadOf[pid] ? rounds16(pid) : null };
     });
+    const roundCell = r => {
+      const x = r.rx;
+      if (!x) return '<td></td>';
+      if (!x.games) return '<td class="cell g0" title="Bye">Bye</td>';
+      const n = x.missed.length ? `${x.available}/${x.games}` : x.available;
+      const title = x.missed.length ? `Unavailable for ${x.missed.length} of ${x.games}` : `${x.games} game${x.games > 1 ? 's' : ''}`;
+      return `<td class="cell ${x.missed.length ? 'gx' : gameCls(x.available)}" title="${title}">${fix(r.rexp, 0)} <span class="muted">×${n}</span></td>`;
+    };
     // Fewer than 5 games is too small a sample to rank with everyone else.
     const elseRank = r => (!r.ew ? -2 : r.ew.m < 5 ? -1 + r.ew.avg / 1e4 : r.ew.avg);
     const sorters = {
       proj: (a, b) => (b.proj ?? -1) - (a.proj ?? -1),
+      round: (a, b) => (b.rexp ?? -1) - (a.rexp ?? -1),
       else: (a, b) => elseRank(b) - elseRank(a),
       name: (a, b) => a.n.localeCompare(b.n),
       price: (a, b) => ((b.sc && b.sc.price) || 0) - ((a.sc && a.sc.price) || 0),
@@ -173,11 +188,15 @@
         (!st.team || (r.sq ? r.sq.team : r.lastTeam) === st.team) &&
         (!st.pos || (r.sc && r.sc.pos.includes(st.pos))) &&
         (!q || r.n.toLowerCase().includes(q)));
+      for (const r of list) {
+        r.rx = r.rounds && r.rounds[st.r];
+        r.rexp = r.rx ? expIn(r.pid, r.rx) : null;
+      }
       list.sort(own(sorters, st.sort) ? sorters[st.sort] : sorters.proj);
       const shown = list.slice(0, 200);
       const th = (key, label) => `<th${key === 'name' ? ' class="l"' : ''}><a href="#" data-sort="${key}">${label}${st.sort === key ? ' ▾' : ''}</a></th>`;
       document.getElementById('ptable').innerHTML = `
-        <thead><tr><th></th>${th('name', 'Player')}<th class="l">Team</th>${D.sc ? `<th class="l">Pos</th>${th('price', 'Price')}${th('own', 'Own %')}` : ''}${th('proj', 'Proj')}${th('else', 'T20 elsewhere')}<th>M ${esc(latest)}</th><th>SC avg</th>${th('runs', 'Runs')}<th>SR</th>${th('wk', 'Wkts')}<th>Econ</th></tr></thead>
+        <thead><tr><th></th>${th('name', 'Player')}<th class="l">Team</th>${D.sc ? `<th class="l">Pos</th>${th('price', 'Price')}${th('own', 'Own %')}` : ''}${th('proj', 'Proj')}${th('round', `R${st.r}`)}${th('else', 'T20 elsewhere')}<th>M ${esc(latest)}</th><th>SC avg</th>${th('runs', 'Runs')}<th>SR</th>${th('wk', 'Wkts')}<th>Econ</th></tr></thead>
         <tbody>${shown.map(r => `<tr>
           <td>${squadButton(r.pid)}</td>
           <td class="l name">${link(r.pid)} ${r.sq && r.sq.os ? `<span class="pill os">${esc(r.sq.os)}</span>` : ''}${r.sq && r.sq.new ? ' <span class="pill">new</span>' : ''}</td>
@@ -185,18 +204,20 @@
           ${D.sc ? `<td class="l">${r.sc ? esc(r.sc.pos.join('/')) : ''}${r.sc && r.sc.inj ? ` <span class="pill no">${esc(r.sc.inj)}</span>` : ''}</td>
           <td>${r.sc ? price(r.sc.price) : ''}</td><td>${r.sc && r.sc.own != null ? fix(r.sc.own) : ''}</td>` : ''}
           <td><b>${fix(r.proj)}</b></td>
+          ${roundCell(r)}
           <td>${r.ew ? `${fix(r.ew.avg)} <span class="muted">(${r.ew.m})</span>` : ''}</td>
           <td>${r.a ? r.a.m : ''}</td><td>${r.last ? fix(r.last.avg) : ''}</td>
           <td>${r.a ? r.a.r : ''}</td><td>${r.last ? fix(r.last.sr, 0) : ''}</td>
           <td>${r.a ? r.a.wk : ''}</td><td>${r.last && r.a.lb ? fix(r.last.econ, 2) : ''}</td></tr>`).join('')}
         </tbody>`;
       if (list.length > shown.length) document.getElementById('ptable').insertAdjacentHTML('beforeend', `<caption class="muted" style="caption-side:bottom;padding:8px">Showing 200 of ${list.length}. Search to narrow.</caption>`);
-      const qs = new URLSearchParams(Object.entries(st).filter(([k, v]) => v && !(k === 'scope' && v === 'squad') && !(k === 'sort' && v === 'proj')));
+      const qs = new URLSearchParams(Object.entries(st).filter(([k, v]) => v && !(k === 'scope' && v === 'squad') && !(k === 'sort' && v === 'proj') && !(k === 'r' && v === defRound)));
       history.replaceState(null, '', `#/players${qs.toString() ? '?' + qs : ''}`);
     }
     document.getElementById('q').addEventListener('input', e => { st.q = e.target.value; render(); });
     document.getElementById('team').addEventListener('change', e => { st.team = e.target.value; render(); });
     document.getElementById('scope').addEventListener('change', e => { st.scope = e.target.value; render(); });
+    document.getElementById('rnd').addEventListener('change', e => { st.r = Number(e.target.value); render(); });
     if (D.sc) document.getElementById('pos').addEventListener('change', e => { st.pos = e.target.value; render(); });
     document.getElementById('ptable').addEventListener('click', e => {
       const a = e.target.closest('[data-sort]');
@@ -380,7 +401,6 @@
     })
       .sort((a, b) => (a.team || 'ZZZ').localeCompare(b.team || 'ZZZ') || (b.avg ?? 0) - (a.avg ?? 0));
     const selRound = leagueRounds.find(r => r.round === sel);
-    const cls = n => (n === 0 ? 'g0' : n >= 3 ? 'g3' : n === 2 ? 'g2' : '');
 
     $app.innerHTML = `
       <h2>Doubles and byes</h2>${draftBanner()}
@@ -389,7 +409,7 @@
         <tbody>${L.TEAMS.map(t => `<tr><td class="l">${team(t)}</td>${leagueRounds.map(r => {
           const g = grid[t][r.round];
           const opp = g.map(m => `${m.home === t ? 'v' : '@'} ${m.home === t ? m.away : m.home} ${day(L.localDate(m.start))}`).join('\n');
-          return `<td class="cell ${cls(g.length)}" data-t="${t}" data-r="${r.round}" title="${esc(opp || 'Bye')}">${g.length}</td>`;
+          return `<td class="cell ${gameCls(g.length)}" data-t="${t}" data-r="${r.round}" title="${esc(opp || 'Bye')}">${g.length}</td>`;
         }).join('')}<td>${leagueRounds.reduce((s, r) => s + grid[t][r.round].length, 0)}</td></tr>`).join('')}</tbody>
       </table></div>
       <p class="muted">Green = double, dark green = triple, red = bye. A blue dot is a game with rain forecast (light = Med, dark = High, hollow = early forecast).
@@ -407,7 +427,7 @@
             const x = e.rounds[r.round];
             if (!x) return '<td class="cell g0">0</td>';
             const missed = x.missed.length ? `Unavailable for ${x.missed.length} of ${x.games}` : '';
-            return `<td class="cell ${x.missed.length ? 'gx' : cls(x.available)}" data-pid="${esc(e.pid)}" data-r="${r.round}" title="${esc(missed)}">${x.available}${x.missed.length ? `/${x.games}` : ''}</td>`;
+            return `<td class="cell ${x.missed.length ? 'gx' : gameCls(x.available)}" data-pid="${esc(e.pid)}" data-r="${r.round}" title="${esc(missed)}">${x.available}${x.missed.length ? `/${x.games}` : ''}${x.available && e.avg != null ? `<br><small class="muted">${fix(e.exp[r.round], 0)}</small>` : ''}</td>`;
           }).join('')}
           <td>${Object.values(e.rounds).reduce((s, x) => s + x.available, 0)}</td></tr>`).join('')}</tbody>
         <tfoot>
@@ -415,8 +435,8 @@
           <tr id="atrisk"><th class="l" colspan="4" title="Games your players are available for that have Med or High rain forecast">Games at rain risk</th>${leagueRounds.map(r => `<td data-r="${r.round}"></td>`).join('')}<td></td></tr>
           <tr><th class="l" colspan="4">Captain options (expected points)</th>${leagueRounds.map(r => `<td class="l" style="font-size:.8rem;white-space:normal;min-width:110px">${L.captainPicks(entries, r.round).map(c => `${esc(name(c.pid))} <span class="muted">${fix(c.value, 0)}</span>`).join('<br>') || '–'}</td>`).join('')}<td></td></tr>
         </tfoot></table></div>
-        <p class="muted">A cell like 1/2 means the player misses one of two games for a listed clash. Proj is expected SC points a game (how it's worked out is on the Players tab).
-          Captain options add up Proj over the games the player is available for, ${fix(L.HOME_EDGE, 2)} up at home and down away; neutral grounds get neither.</p>`
+        <p class="muted">Each cell is the player's games that round, with expected points for the round under it. A cell like 1/2 means the player misses one of two games for a listed clash. Proj is expected SC points a game (how it's worked out is on the Players tab).
+          Round expected points and captain options add up Proj over the games the player is available for, ${fix(L.HOME_EDGE, 2)} up at home and down away; neutral grounds get neither.</p>`
       : `<div class="card">Your squad is empty. Add players with the <b>+</b> button on the <a href="#/players">Players</a> tab. It's saved on this device only.</div>`}`;
     plannerRain(entries, selRound);
   }

@@ -137,8 +137,76 @@ def test_newcomer_page_shows_other_competitions(server, page):
 def test_players_list_shows_t20_elsewhere(server, page):
     page.goto(server + '#/players')
     page.fill('#q', 'bairstow')
-    cell = page.locator('#ptable tbody tr', has_text='Jonny Bairstow').locator('td').nth(7)
+    cell = page.locator('#ptable tbody tr', has_text='Jonny Bairstow').locator('td').nth(8)
     expect(cell).to_contain_text('(')
+
+
+def _round_cell(page, name):
+    return page.locator('#ptable tbody tr', has_text=name).locator('td').nth(7)
+
+
+def test_players_round_column_adds_up_a_double(server, page):
+    # SCO play once in round 1 and twice in round 5; HUR have a bye in round 5.
+    page.goto(server + '#/players?q=mitchell marsh&r=1')
+    row = page.locator('#ptable tbody tr', has_text='Mitchell Marsh')
+    proj = float(row.locator('td').nth(6).inner_text())
+    expect(page.locator('#ptable thead')).to_contain_text('R1')
+    one = _round_cell(page, 'Mitchell Marsh')
+    expect(one).to_contain_text('×1')
+    assert abs(float(one.inner_text().split()[0]) - proj) <= 1.5
+    page.select_option('#rnd', '5')
+    expect(page.locator('#ptable thead')).to_contain_text('R5')
+    two = _round_cell(page, 'Mitchell Marsh')
+    expect(two).to_contain_text('×2')
+    expect(two).to_have_class(re.compile(r'\bg2\b'))
+    assert abs(float(two.inner_text().split()[0]) - 2 * proj) <= 2.5
+    assert 'r=5' in page.url
+    hur = json.loads((ROOT / 'data' / 'squads.json').read_text(encoding='utf-8'))['teams']['HUR'][0]['n']
+    page.fill('#q', hur)
+    bye = _round_cell(page, hur)
+    expect(bye).to_have_text('Bye')
+    expect(bye).to_have_class(re.compile(r'\bg0\b'))
+
+
+def test_players_sort_by_round_puts_doubles_first(server, page):
+    # Round 5's only double is SCO, which the default order wouldn't put first.
+    page.goto(server + '#/players?r=5&sort=round')
+    rows = page.locator('#ptable tbody tr')
+    expect(rows.first).to_be_visible()
+    values = []
+    for i in range(10):
+        expect(rows.nth(i).locator('td').nth(2)).to_have_text('SCO')
+        cell = rows.nth(i).locator('td').nth(7)
+        expect(cell).to_contain_text('×2')
+        values.append(float(cell.inner_text().split()[0]))
+    assert values == sorted(values, reverse=True)
+
+
+def test_players_round_column_skips_games_the_player_misses(server, page):
+    page.goto(server + '#/players?r=1')
+    cells = page.locator('#ptable tbody td.gx')
+    expect(cells.first).to_be_visible()
+    for row in page.locator('#ptable tbody tr', has=page.locator('td.gx')).all()[:5]:
+        tds = row.locator('td')
+        val, n = tds.nth(7).inner_text().split()
+        available = int(n.lstrip('×').split('/')[0])
+        assert abs(float(val) - available * float(tds.nth(6).inner_text())) <= 1.5 * max(available, 1)
+
+
+def test_players_round_param_falls_back_and_the_default_stays_out_of_the_url(server, page):
+    # Mid-season, so the default is the round in progress rather than round 1.
+    page.clock.set_fixed_time('2027-01-03T12:00:00+11:00')
+    page.goto(server + '#/players')
+    expect(page.locator('#ptable tbody tr').first).to_be_visible()
+    default = page.locator('#rnd').input_value()
+    assert default == '5'
+    page.goto(server + '#/players?r=99')
+    expect(page.locator('#rnd')).to_have_value(default)
+    other = '6'
+    page.select_option('#rnd', other)
+    assert f'r={other}' in page.url
+    page.select_option('#rnd', default)
+    assert 'r=' not in page.url
 
 
 def test_players_show_supercoach_price_position_and_ownership(server, page):
@@ -165,7 +233,13 @@ def test_squad_add_shows_in_planner(server, page):
     row.locator('button[data-squad]').click()
     expect(row.locator('button[data-squad]')).to_have_text('✓')
     page.goto(server + '#/planner')
-    expect(page.locator('#app table').nth(1).locator('tbody tr', has_text='Mitchell Marsh')).to_have_count(1)
+    mine = page.locator('#app table').nth(1).locator('tbody tr', has_text='Mitchell Marsh')
+    expect(mine).to_have_count(1)
+    proj = float(mine.locator('td').nth(3).inner_text())
+    r5 = mine.locator('td[data-r="5"]')
+    expect(r5.locator('small')).to_be_visible()
+    assert r5.inner_text().split()[0] == '2'
+    assert abs(float(r5.locator('small').inner_text()) - 2 * proj) <= 2.5
 
 
 def _sc_players():
