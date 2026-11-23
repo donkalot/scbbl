@@ -1,6 +1,7 @@
 """Squad players' records outside the BBL: internationals, Australian domestic and franchise T20."""
 import io
 import json
+import re
 import time
 import zipfile
 from datetime import date
@@ -27,6 +28,9 @@ def comps():
 
 
 def load(code, max_age_h=MAX_AGE_H):
+    # The code comes from a curated file and becomes a cache path, so keep it a plain name.
+    if not re.fullmatch(r'[a-z0-9]+', code):
+        raise ValueError(f'bad competition code {code!r}')
     path = DIR / f'{code}_male_json.zip'
     if not path.exists() or time.time() - path.stat().st_mtime > max_age_h * 3600:
         DIR.mkdir(parents=True, exist_ok=True)

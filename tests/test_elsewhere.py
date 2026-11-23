@@ -1,3 +1,5 @@
+import pytest
+
 from pipeline import elsewhere
 from pipeline.cricsheet import parse_match
 
@@ -109,3 +111,10 @@ def test_attach_form_gives_squad_rows_their_scored_t20_games():
                       'b': {'y': {'t20': {'m': 2}}}, 'c': {'y': {'fc': {'m': 4}}}}}
     elsewhere.attach_form(sq, ew)
     assert [r.get('f20') for r in sq['teams']['HEA']] == [[400, 8], None, None, None]
+
+
+def test_load_refuses_a_code_that_is_not_a_plain_name(monkeypatch):
+    monkeypatch.setattr(elsewhere, 'fetch', lambda url: pytest.fail('fetched'))
+    for code in ('../../x', 'C:/x', 'ipl/../x', 'IPL'):
+        with pytest.raises(ValueError):
+            elsewhere.load(code)

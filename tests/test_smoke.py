@@ -785,3 +785,8 @@ def test_pitch_note_on_the_match_list_and_match_page(server, page):
     expect(pitch).to_contain_text('background, not a predictor')
     page.goto(server + '#/match/40719')
     expect(page.locator('#pitch')).to_contain_text('No full BBL games here')
+
+
+def test_pages_serves_files_as_is():
+    # Without it Jekyll would turn any committed file with front matter into a page on the site.
+    assert (ROOT / '.nojekyll').exists()
