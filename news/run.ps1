@@ -14,7 +14,8 @@ $Logs = Join-Path $State 'logs'
 $Marker = Join-Path $State 'running'
 # The only paths a news run may change. Leftovers or commits touching anything else stop the run.
 # JSON only: anything under data/ is served from the live site, so an .html there would be a page.
-$Allowed = '^((curated|data)/[\w/.-]+\.json|news/open-items\.md)$'
+# curated/sc_raw is SuperCoach's own JSON, saved by hand; only the user changes it.
+$Allowed = '^((curated/(?!(?i:sc_raw)/)|data/)[\w/.-]+\.json|news/open-items\.md)$'
 # Claude reads fetched web pages, so it gets exact commands and path-scoped edits, never a free shell.
 # Read, Glob and Grep stay unlisted: unlisted, they reach only the repo; allowing them opens the whole disk.
 $Tools = 'WebSearch', 'WebFetch',
@@ -22,7 +23,7 @@ $Tools = 'WebSearch', 'WebFetch',
   'Bash(python -m pipeline.build)', 'Bash(python -m pytest -q)', 'Bash(node --test tests/ worker/test/)',
   'Bash(git status)', 'Bash(git diff)', 'Bash(git checkout -- curated data)',
   'Bash(git add curated data news/open-items.md)', 'Bash(git commit -m *)'
-$Deny = 'Read(./worker/.dev.vars)', 'Read(./worker/.wrangler/**)'
+$Deny = 'Read(./worker/.dev.vars)', 'Read(./worker/.wrangler/**)', 'Edit(curated/sc_raw/**)', 'Write(curated/sc_raw/**)'
 New-Item -ItemType Directory -Force $Logs | Out-Null
 $Log = Join-Path $Logs ((Get-Date -Format 'yyyy-MM-dd_HHmm') + '.log')
 $OutputEncoding = [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false

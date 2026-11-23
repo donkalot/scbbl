@@ -26,7 +26,7 @@ Search the web for BBL|16 news since the last check that changes the hand-curate
 - Every event and note needs a source URL from a page you actually fetched. Prefer the club, cricket.com.au, ESPNcricinfo or the official board; use Wikipedia only when nothing better exists. Use `verified: false` when the date isn't confirmed by an official source.
 - Ignore rumours, social-media posts and fantasy tip articles, apart from facts they cite from an official source.
 - Never fetch or scrape supercoach.com.au.
-- Don't touch code files (`*.js`, `*.py`, `*.html`, `*.ps1`), `data/` by hand, `.github/`, or anything in `news/` other than `news/open-items.md`. `data/` is only ever written by the build.
+- Don't touch code files (`*.js`, `*.py`, `*.html`, `*.ps1`), `curated/sc_raw/`, `data/` by hand, `.github/`, or anything in `news/` other than `news/open-items.md`. `data/` is only ever written by the build.
 - Your tools are limited to match. Edit and Write work only under `curated/` and on `news/open-items.md`. The shell runs only the exact commands named in this prompt, plus `git status` and `git diff`. Anything else is denied, so don't look for another way round.
 - Update `news/open-items.md`: remove resolved items, and add new open questions you found but couldn't settle.
 

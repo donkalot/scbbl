@@ -2,7 +2,7 @@ import json
 from collections import Counter
 from datetime import date
 
-from .common import CURATED, ca, team_code
+from .common import CURATED, TEAMS, ca, team_code
 
 COMPETITION_ID = 4691  # KFC BBL|16
 LEAGUE_MATCHES = 40
@@ -41,6 +41,12 @@ def normalise(raw, overrides=None):
 def check(matches):
     """Return a list of problems; empty means the fixture is safe to publish."""
     problems = []
+    # The site puts ids and team codes into its HTML unescaped, so they must stay plain.
+    codes = set(TEAMS.values()) | {'TBC'}
+    for m in matches:
+        if type(m['id']) is not int:
+            problems.append(f"{m['name']} has id {m['id']!r}, not an integer")
+        problems += [f"{m['name']} has team {t!r}, not a team code" for t in (m['home'], m['away']) if t not in codes]
     league = [m for m in matches if m['stage'] == 'league']
     if len(league) != LEAGUE_MATCHES:
         problems.append(f'{len(league)} league matches, expected {LEAGUE_MATCHES}')
@@ -56,6 +62,23 @@ def check(matches):
             problems.append(f"{m['name']} ({m['id']}) dated {d}, outside {WINDOW[0]}..{WINDOW[1]}")
         if m['home'] == m['away']:
             problems.append(f"{m['name']} has {m['home']} playing itself")
+    return problems
+
+
+def check_rounds(rounds):
+    """Round numbers and dates go into the site's HTML unescaped, so they must be an int and ISO dates."""
+    problems = []
+    for r in rounds['rounds']:
+        if type(r.get('round')) is not int:
+            problems.append(f"round {r.get('round')!r} is not an integer")
+        for k in ('start', 'end'):
+            v = r.get(k)
+            try:
+                ok = date.fromisoformat(v).isoformat() == v
+            except (TypeError, ValueError):
+                ok = False
+            if not ok:
+                problems.append(f"round {r.get('round')!r} {k} {v!r} is not a YYYY-MM-DD date")
     return problems
 
 

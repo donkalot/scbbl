@@ -1,6 +1,8 @@
 import json
 from collections import Counter
 
+import pytest
+
 from pipeline import sc_import
 from pipeline.common import CURATED, DATA
 
@@ -65,6 +67,12 @@ def test_a_saved_sc_round_must_agree_with_the_draft(tmp_path, monkeypatch):
     draft['rounds'][0]['end'] = '2026-12-13'
     _, _, problems, _ = sc_import.build(SQUADS, FIXTURE, draft)
     assert problems == ['SC round 1 is 2026-12-12 to 2026-12-12, but curated/rounds.json has 2026-12-12 to 2026-12-13']
+    planted = _sc('Alex', 'Carey', 'ADL')
+    planted['previous_total'] = '<img src=x>'
+    (tmp_path / 'players-round1.json').write_text(json.dumps([planted]))
+    draft['rounds'][0]['end'] = '2026-12-12'
+    _, _, problems, _ = sc_import.build(SQUADS, FIXTURE, draft)
+    assert len(problems) == 1 and 'not a plain number' in problems[0]
 
 
 def test_the_saved_sc_fixture_agrees_with_the_draft_rounds():
@@ -104,3 +112,40 @@ def test_our_points_reconcile_with_supercoach_2025_26_totals():
     # What's left is which fielder SuperCoach credits for a shared run-out, plus a stray catch.
     assert sum(d == 0 for d in diffs) >= 0.8 * len(diffs)
     assert max(map(abs, diffs)) <= 20
+
+
+def _plain():
+    return {'round': 1, 'updated': 'x', 'rules': {'cap': 2000000, 'squad': 17, 'scoring': 11, 'lockout': 'x',
+                                                   'positions': {'BAT': {'squad': 7, 'active': 5}}},
+            'players': {'a': {'id': 1, 'pos': ['BAT'], 'price': 100, 'own': 1.5, 'chg': -3, 'g': 2, 'pts': 80,
+                              'prev': [4, 175]}}}
+
+
+def test_the_saved_sc_values_are_plain():
+    assert sc_import.check_plain(json.loads((DATA / 'sc.json').read_text(encoding='utf-8'))) == []
+    assert sc_import.check_plain(_plain()) == []
+    sc = _plain()
+    sc['rules']['scoring'] = None
+    assert sc_import.check_plain(sc) == []
+
+
+@pytest.mark.parametrize('path, value', [
+    (('round',), '1<b>'), (('rules', 'squad'), '17<b>'), (('rules', 'squad'), None),
+    (('rules', 'positions', 'BAT', 'active'), '5<b>'), (('players', 'a', 'id'), '1"'),
+    (('players', 'a', 'pos'), ['<b>']), (('players', 'a', 'price'), 1.5), (('players', 'a', 'chg'), '-3'),
+    (('players', 'a', 'own'), '1.5<b>'), (('players', 'a', 'own'), float('nan')), (('players', 'a', 'prev'), [4, '<b>']), (('players', 'a', 'prev'), [4]),
+], ids=lambda v: '.'.join(v) if isinstance(v, tuple) else None)
+def test_sc_values_the_site_shows_unescaped_must_be_plain(path, value):
+    sc = _plain()
+    *parent, key = path
+    d = sc
+    for k in parent:
+        d = d[k]
+    d[key] = value
+    assert sc_import.check_plain(sc)
+
+
+def test_sc_position_codes_must_be_plain():
+    sc = _plain()
+    sc['rules']['positions']['<b>x'] = {'squad': 1, 'active': 1}
+    assert sc_import.check_plain(sc)

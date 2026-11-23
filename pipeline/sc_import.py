@@ -1,5 +1,6 @@
 """SuperCoach JSON saved by hand from a logged-in browser -> data/sc.json and, once complete, official rounds."""
 import json
+import math
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -153,5 +154,30 @@ def build(squads, fixture, draft):
         'rules': rules(settings),
         'players': {pid: player_row(p) for pid, p in sorted(matched.items())},
     }
+    problems += check_plain(sc)
     official = {'draft': False, 'source': 'SuperCoach real_fixture', 'rounds': rounds} if complete else None
     return sc, official, problems, notes
+
+
+def _int(v):
+    return type(v) is int
+
+
+def check_plain(sc):
+    """The site puts these SC numbers and position codes into its HTML unescaped, so they must stay plain."""
+    r = sc['rules']
+    bad = [f'round {sc["round"]!r}'] if not _int(sc['round']) else []
+    # A null scoring limit means every on-field player counts; the site falls back to `active`.
+    bad += [f'rules.{k} {v!r}' for k, v in r.items()
+            if k not in ('positions', 'lockout') and not _int(v) and not (k == 'scoring' and v is None)]
+    for p, n in r['positions'].items():
+        if not re.fullmatch(r'[A-Z]{2,4}', p) or not (_int(n['squad']) and _int(n['active'])):
+            bad.append(f'position {p!r} {n!r}')
+    for pid, row in sc['players'].items():
+        ok = (_int(row['id']) and all(p in r['positions'] for p in row['pos'])
+              and all(_int(row[k]) for k in ('price', 'chg', 'g', 'pts') if k in row)
+              and (row['own'] is None or (type(row['own']) in (int, float) and math.isfinite(row['own'])))
+              and ('prev' not in row or (len(row['prev']) == 2 and all(map(_int, row['prev'])))))
+        if not ok:
+            bad.append(f'player {pid} {row!r}')
+    return [f'SuperCoach value is not a plain number or code: {b}' for b in bad]

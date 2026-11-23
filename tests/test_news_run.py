@@ -111,7 +111,8 @@ def test_claude_gets_scoped_tools_and_not_the_user_settings(env):
     # Unlisted, Read/Glob/Grep reach only the repo; listed, Glob and Grep reach the whole disk.
     assert {'Bash', 'Edit', 'Write', 'PowerShell', 'Read', 'Glob', 'Grep'}.isdisjoint(tools)
     denied = argv[argv.index('--disallowedTools') + 1:]
-    assert 'Read(./worker/.dev.vars)' in denied and 'Read(./worker/.wrangler/**)' in denied
+    assert {'Read(./worker/.dev.vars)', 'Read(./worker/.wrangler/**)', 'Edit(curated/sc_raw/**)',
+            'Write(curated/sc_raw/**)'} <= set(denied)
     assert all(not t.startswith('Bash(') or ' *' not in t or t == 'Bash(git commit -m *)' for t in tools)
     assert 'Bash(python -m pipeline.build)' in tools and 'Write(curated/**)' in tools
 
@@ -190,7 +191,9 @@ def test_unpushed_commit_outside_news_paths_stops_before_claude(env):
     # A rename lists only the new, allowed name unless renames are switched off.
     "git('mv', 'app.js', 'curated/app.json')\ngit('commit', '-qm', 'News: sneaky')\n",
     "write('data/x.html', '<script></script>')\ngit('add', 'data')\ngit('commit', '-qm', 'News: sneaky')\n",
-], ids=['code', 'rename', 'html-in-data'])
+    "write('curated/sc_raw/settings.json', '{}')\ngit('add', 'curated')\ngit('commit', '-qm', 'News: sneaky')\n",
+    "write('curated/SC_RAW/settings.json', '{}')\ngit('add', 'curated')\ngit('commit', '-qm', 'News: sneaky')\n",
+], ids=['code', 'rename', 'html-in-data', 'sc-raw', 'sc-raw-case'])
 def test_claude_commit_outside_news_paths_is_not_pushed(env, body):
     claude(env, body, 'committed News: sneaky')
     r = run(env)

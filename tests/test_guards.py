@@ -1,5 +1,7 @@
 from datetime import date, timedelta
 
+import pytest
+
 from pipeline import fixture, guards
 
 TEAMS = ['HEA', 'HUR', 'REN', 'SCO', 'SIX', 'STA', 'STR', 'THU']
@@ -38,6 +40,41 @@ def test_team_twice_in_a_day_is_caught():
     fx[4]['start'] = fx[0]['start']
     shared = {fx[0]['home'], fx[0]['away']} & {fx[4]['home'], fx[4]['away']}
     assert shared and any('plays twice' in p for p in fixture.check(fx))
+
+
+def test_finals_awaiting_teams_pass():
+    fx = _league() + [{'id': 99, 'name': 'The Final', 'stage': 'final', 'home': 'TBC', 'away': 'TBC',
+                       'start': '2027-01-26T08:15:00Z'}]
+    assert fixture.check(fx) == []
+
+
+@pytest.mark.parametrize('field, value', [
+    ('home', '<img src=x onerror=alert(1)>'), ('away', 'Heat'), ('id', '1" onclick="x'), ('id', True),
+])
+def test_values_the_site_shows_unescaped_must_be_plain(field, value):
+    fx = _league()
+    fx[0][field] = value
+    assert any(repr(value) in p for p in fixture.check(fx))
+
+
+def test_valid_rounds_pass():
+    assert fixture.check_rounds({'rounds': [{'round': 1, 'start': '2026-12-12', 'end': '2026-12-19'},
+                                            {'round': 10, 'start': '2027-01-19', 'end': '2027-01-26',
+                                             'finals': True}]}) == []
+
+
+@pytest.mark.parametrize('row', [
+    {'round': '1<script>', 'start': '2026-12-12', 'end': '2026-12-19'},
+    {'round': 1.0, 'start': '2026-12-12', 'end': '2026-12-19'},
+    {'round': 1, 'start': '2026-12-12"><b>', 'end': '2026-12-19'},
+    {'round': 1, 'start': '2026-12-12', 'end': '20261219'},
+    {'round': 1, 'start': '"><b>x</b>', 'end': '2026-12-19'},
+    {'round': 1, 'start': '2026-W50-1', 'end': '2026-12-19'},
+    {'round': 1, 'start': 20261212, 'end': '2026-12-19'},
+    {'round': 1, 'start': '2026-12-12'},
+])
+def test_bad_rounds_are_caught(row):
+    assert fixture.check_rounds({'rounds': [row]})
 
 
 def test_overrides_fix_a_bad_row():

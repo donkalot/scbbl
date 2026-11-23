@@ -72,6 +72,7 @@ def main():
     draft_rounds = json.loads((CURATED / 'rounds.json').read_text(encoding='utf-8'))
     sc, official_rounds, problems, sc_notes = sc_import.build(sq, fx, draft_rounds)
     guards.fail_if(problems, 'supercoach')
+    guards.fail_if(fixture.check_rounds(official_rounds or draft_rounds), 'rounds')
     team_of = {r['pid']: team for team, rs in sq['teams'].items() for r in rs}
     for team, rs in sq['teams'].items():
         for r in rs:
