@@ -1,10 +1,12 @@
 import json
+import re
+import statistics
 from collections import Counter
 
 import pytest
 
 from pipeline import sc_import
-from pipeline.common import CURATED, DATA
+from pipeline.common import CURATED, DATA, ROOT
 
 SQUADS = {'teams': {'SIX': [{'pid': 'od', 'n': 'Oliver Davies'}, {'pid': 'ss', 'n': 'Steve Smith'}],
                     'STR': [{'pid': 'ac', 'n': 'Alex Carey'}]}}
@@ -112,6 +114,26 @@ def test_our_points_reconcile_with_supercoach_2025_26_totals():
     # What's left is which fielder SuperCoach credits for a shared run-out, plus a stray catch.
     assert sum(d == 0 for d in diffs) >= 0.8 * len(diffs)
     assert max(map(abs, diffs)) <= 20
+
+
+def test_the_site_price_rate_is_supercoachs_round_1_rate():
+    """logic.js PRICE.perPoint turns a price into the average it pays for; SC sets it from last season's average."""
+    src = (ROOT / 'logic.js').read_text(encoding='utf-8')
+    rate = int(re.search(r'perPoint: (\d+)', src).group(1))
+    min_games = int(re.search(r'minGames: (\d+)', src).group(1))
+    players = json.loads((CURATED / 'sc_raw' / 'players-round1.json').read_text(encoding='utf-8'))
+
+    def ratios(keep):
+        return [min(p['player_stats'], key=lambda s: s['round'])['price'] * p['previous_games'] / p['previous_total']
+                for p in players if (p['previous_total'] or 0) > 0 and keep(p['previous_games'] or 0)]
+    tested = ratios(lambda g: g >= min_games)
+    assert len(tested) >= 60
+    assert abs(statistics.median(tested) / rate - 1) < 0.005
+    # Most players are priced at the rate to within rounding; SC's own adjustments are the few exceptions.
+    assert sum(abs(r / rate - 1) < 0.01 for r in tested) >= 0.75 * len(tested)
+    # Below minGames SC blends in a default, so the price isn't the rate and priceGap leaves them out.
+    blended = ratios(lambda g: 0 < g < min_games)
+    assert len(blended) >= 10 and sum(abs(r / rate - 1) < 0.01 for r in blended) <= 0.25 * len(blended)
 
 
 def _plain():

@@ -137,12 +137,12 @@ def test_newcomer_page_shows_other_competitions(server, page):
 def test_players_list_shows_t20_elsewhere(server, page):
     page.goto(server + '#/players')
     page.fill('#q', 'bairstow')
-    cell = page.locator('#ptable tbody tr', has_text='Jonny Bairstow').locator('td').nth(8)
+    cell = page.locator('#ptable tbody tr', has_text='Jonny Bairstow').locator('td').nth(9)
     expect(cell).to_contain_text('(')
 
 
 def _round_cell(page, name):
-    return page.locator('#ptable tbody tr', has_text=name).locator('td').nth(7)
+    return page.locator('#ptable tbody tr', has_text=name).locator('td').nth(8)
 
 
 def test_players_round_column_adds_up_a_double(server, page):
@@ -176,7 +176,7 @@ def test_players_sort_by_round_puts_doubles_first(server, page):
     values = []
     for i in range(10):
         expect(rows.nth(i).locator('td').nth(2)).to_have_text('SCO')
-        cell = rows.nth(i).locator('td').nth(7)
+        cell = rows.nth(i).locator('td').nth(8)
         expect(cell).to_contain_text('×2')
         values.append(float(cell.inner_text().split()[0]))
     assert values == sorted(values, reverse=True)
@@ -188,7 +188,7 @@ def test_players_round_column_skips_games_the_player_misses(server, page):
     expect(cells.first).to_be_visible()
     for row in page.locator('#ptable tbody tr', has=page.locator('td.gx')).all()[:5]:
         tds = row.locator('td')
-        val, n = tds.nth(7).inner_text().split()
+        val, n = tds.nth(8).inner_text().split()
         available = int(n.lstrip('×').split('/')[0])
         assert abs(float(val) - available * float(tds.nth(6).inner_text())) <= 1.5 * max(available, 1)
 
@@ -236,6 +236,31 @@ def test_players_show_supercoach_price_position_and_ownership(server, page):
     page.goto(server + '#/player/' + pid)
     expect(page.locator('.stats')).to_contain_text("SC price")
     expect(page.locator('.stats')).to_contain_text(f"{sc['prev'][1]} pts in {sc['prev'][0]}")
+
+
+def test_players_vs_price_sorts_and_shows_on_the_player_page(server, page):
+    sc = json.loads((ROOT / 'data' / 'sc.json').read_text(encoding='utf-8'))['players']
+    rate = int(re.search(r'perPoint: (\d+)', (ROOT / 'logic.js').read_text(encoding='utf-8')).group(1))
+    page.goto(server + '#/players?sort=value')
+    expect(page.locator('#ptable thead')).to_contain_text('vs price ▾')
+    rows = page.locator('#ptable tbody tr')
+    expect(rows.first).to_be_visible()
+    vals = [float(rows.nth(i).locator('td').nth(7).inner_text().replace('−', '-')) for i in range(10)]
+    assert vals == sorted(vals, reverse=True) and vals[0] >= 5
+    expect(rows.first.locator('td').nth(7).locator('.pill.ok')).to_have_count(1)
+    href = rows.first.locator('td.name a').get_attribute('href')
+    pid = href.rsplit('/', 1)[1]
+    assert abs(vals[0] - (float(rows.first.locator('td').nth(6).inner_text()) - sc[pid]['price'] / rate)) <= 0.11
+    page.goto(server + href)
+    expect(page.locator('#pricegap')).to_contain_text(f"Priced for {sc[pid]['price'] / rate:.1f} a game")
+    expect(page.locator('#pricegap')).to_contain_text('underpriced')
+    rookie = next(r for r in json.loads((ROOT / 'data' / 'squads.json').read_text(encoding='utf-8'))['teams']['SCO']
+                  if r['pid'] in sc and not sc[r['pid']].get('prev'))
+    page.goto(server + '#/players?q=' + rookie['n'])
+    expect(page.locator('#ptable tbody tr', has_text=rookie['n']).locator('td').nth(7)).to_have_text('')
+    page.goto(server + '#/player/' + rookie['pid'])
+    expect(page.locator('.stats')).to_contain_text('SC price')
+    expect(page.locator('#pricegap')).to_have_count(0)
 
 
 def test_squad_add_shows_in_planner(server, page):
@@ -611,6 +636,42 @@ def test_save_prices_bookmark_downloads_the_three_raw_files(server, page, owned)
         name = d.suggested_filename
         want = players_body if name.startswith('players') else (raw / name).read_text(encoding='utf-8')
         assert json.loads(pathlib.Path(d.path()).read_text(encoding='utf-8')) == json.loads(want)
+
+
+@pytest.mark.parametrize('broken, body, status, token, want', [
+    ('settings', '', 200, True, 'settings answered 200 with nothing in it. Reload the page and try again.'),
+    ('real_fixture', '', 204, True, 'real_fixture answered 204 with nothing in it. Reload the page and try again.'),
+    ('players-cf', '<html>', 200, True, 'players-cf answered 200 with something that is not JSON. Reload the page and try again.'),
+    ('settings', '', 401, False, 'settings answered 401. No SuperCoach login was found, so log in first. Reload the page and try again.'),
+    ('settings', '', 401, 'odd', 'settings answered 401. A SuperCoach login was found but could not be read. Reload the page and try again.'),
+], ids=['empty-settings', 'no-content-fixture', 'html-players', 'logged-out', 'unreadable-login'])
+def test_save_prices_bookmark_names_the_endpoint_that_sent_no_json(server, page, broken, body, status, token, want):
+    code = _save_bookmark(page, server)
+    raw = ROOT / 'curated' / 'sc_raw'
+    msgs, got = [], []
+    page.on('dialog', lambda d: (msgs.append(d.message), d.dismiss()))
+    page.on('download', lambda d: got.append(d))
+
+    def fake_sc(route):
+        url = route.request.url
+        for key, name in (('settings', 'settings.json'), ('real_fixture', 'fixture.json'), ('players-cf', 'players-round1.json')):
+            if f'/v1/{key}' in url:
+                if key == broken:
+                    return route.fulfill(status=status, content_type='application/json', body=body)
+                return route.fulfill(content_type='application/json', body=(raw / name).read_text(encoding='utf-8'))
+        stored = {True: "JSON.stringify('tok')", 'odd': "JSON.stringify({jwt: 'tok'})"}.get(token)
+        route.fulfill(content_type='text/html', body=(
+            f"<script>localStorage.setItem('VMLS:news:accessToken', {stored})</script>" if stored else ''))
+    page.route('https://www.supercoach.com.au/**', fake_sc)
+    page.goto('https://www.supercoach.com.au/2026/bbl/classic/team')
+    page.evaluate('c => { (0, eval)(c); }', code)
+    for _ in range(30):
+        if msgs:
+            break
+        page.wait_for_timeout(100)
+    assert msgs == ['Save failed: ' + want] and got == []
+    assert all(f'status of {status}' in e for e in page.errors)
+    page.errors.clear()
 
 
 def test_save_prices_bookmark_refuses_off_supercoach(server, page):

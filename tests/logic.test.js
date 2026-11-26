@@ -104,6 +104,28 @@ test('players with no recent BBL games get a flat value by type', () => {
   assert.equal(flat(old), L.PROJ.back.local);
 });
 
+test('priceGap is Proj minus the average the price pays for, labelled past the band, for tested players only', () => {
+  const rate = L.PRICE.perPoint, band = L.PRICE.band;
+  const p = avg => ({ avg, g: 10 });
+  const s = implied => ({ price: implied * rate, prev: [10, 400] });
+  const g = L.priceGap(p(48), s(40));
+  assert.ok(Math.abs(g.implied - 40) < 1e-9 && Math.abs(g.gap - 8) < 1e-9);
+  assert.equal(g.label, 'under');
+  assert.equal(L.priceGap(p(40 + band), s(40)).label, 'under');
+  assert.equal(L.priceGap(p(40 + band - 0.06), s(40)).label, null);
+  assert.equal(L.priceGap(p(40 - band + 0.06), s(40)).label, null);
+  assert.equal(L.priceGap(p(40 - band), s(40)).label, 'over');
+  assert.equal(L.priceGap(p(40 + band - 0.04), s(40)).label, 'under', 'shown as +5.0, so labelled');
+  assert.equal(L.priceGap(p(40 - band + 0.04), s(40)).label, 'over', 'shown as −5.0, so labelled');
+  assert.equal(L.priceGap(null, s(40)), null);
+  assert.equal(L.priceGap({ avg: 41, g: 0 }, s(40)), null, 'flat value, no recent BBL games');
+  assert.equal(L.priceGap(p(48), null), null);
+  assert.equal(L.priceGap(p(48), { price: 40 * rate }), null, 'did not play last season');
+  assert.equal(L.priceGap(p(48), { price: 0, prev: [10, 400] }), null);
+  assert.equal(L.priceGap(p(48), { price: 40 * rate, prev: [L.PRICE.minGames - 1, 120] }), null, 'SC blends prices under minGames');
+  assert.equal(L.priceGap(p(48), { price: 40 * rate, prev: [L.PRICE.minGames, 160] }).label, 'under');
+});
+
 test('home edge applies at the home side\'s own grounds only', () => {
   const at = city => ({ home: 'REN', away: 'SIX', venue: { city } });
   assert.equal(L.homeEdge(at('Melbourne'), 'REN'), L.HOME_EDGE);

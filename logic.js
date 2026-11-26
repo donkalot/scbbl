@@ -103,6 +103,22 @@
     return { avg: base + lift, g, raw: sc / g, base, lift, formAvg, fn };
   }
 
+  // SC prices at perPoint dollars per point of last season's league average (median over BBL|16 round-1 players
+  // with 7+ games), but blends in a default for 1-3 games, so those prices aren't the rate. Backtest, 992
+  // player-seasons with minGames+ games priced at the rate: Proj beat the price (0.77 weight vs 0.18), and a gap
+  // of +band or more beat the price 64-79% of the time, -band or less 16-26%.
+  const PRICE = { perPoint: 2756, band: 5, minGames: 4 };
+
+  // Proj minus the average the price pays for, labelled on the one-decimal gap the site shows.
+  // Only for the tested case: minGames+ SC games last season, recent BBL games.
+  function priceGap(p, s) {
+    if (!p || !p.g || !s || !s.prev || s.prev[0] < PRICE.minGames || !s.price) return null;
+    const implied = s.price / PRICE.perPoint;
+    const gap = p.avg - implied;
+    const shown = Math.sign(gap) * Number(Math.abs(gap).toFixed(1));
+    return { implied, gap, label: shown >= PRICE.band ? 'under' : shown <= -PRICE.band ? 'over' : null };
+  }
+
   // +HOME_EDGE at home, -HOME_EDGE away; nothing at a ground that isn't the home side's.
   function homeEdge(m, team) {
     if (!m.venue || !(HOME_CITIES[m.home] || []).includes(m.venue.city)) return 0;
@@ -412,6 +428,6 @@
     return { squad, captain, pins, missing };
   }
 
-  return { TEAMS, PROJ, HOME_EDGE, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, seasonOf, projection, homeEdge, expected, captainPicks, slotFit, fitting,
+  return { TEAMS, PROJ, HOME_EDGE, PRICE, localDate, roundOf, teamRounds, eventsFor, playerRounds, overs, seasonLine, seasonOf, projection, priceGap, homeEdge, expected, captainPicks, slotFit, fitting,
            bestField, fieldScore, tradeRound, tradeStatus, sparkPath, venueSplits, playerLog, sumAggs, aggLine, battingText, bowlingText, scPoints, byeDots, caLines, rainRisk, climateRisk, windowHours, matchPid, scPicks, scImport };
 });

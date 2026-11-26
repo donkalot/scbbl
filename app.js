@@ -117,6 +117,13 @@
   }
   const sc = pid => (D.sc && D.sc.players[pid]) || null;
   const price = v => `${v < 0 ? '−' : ''}$${(Math.abs(v) / 1000).toFixed(1)}k`;
+  const signed = v => `${v >= 0.05 ? '+' : v <= -0.05 ? '−' : ''}${fix(Math.abs(v))}`;
+  const GAP_LABEL = { under: ['ok', 'underpriced'], over: ['no', 'overpriced'] };
+  function gapText(g) {
+    if (!g) return '';
+    const title = `Priced for ${fix(g.implied)} a game${g.label ? `: ${GAP_LABEL[g.label][1]}` : ''}`;
+    return g.label ? `<span class="pill ${GAP_LABEL[g.label][0]}" title="${title}">${signed(g.gap)}</span>` : `<span title="${title}">${signed(g.gap)}</span>`;
+  }
   function scNote() {
     if (!D.sc) return '<p class="muted">No SuperCoach prices yet.</p>';
     const r = D.rounds.rounds.find(x => x.round === D.sc.round);
@@ -147,6 +154,7 @@
       </div>
       <p class="muted">Proj = expected SC points a game: the last two BBL seasons (plus this one) pulled towards the league average of ${L.PROJ.mean}, harder the fewer games, nudged by T20 form elsewhere for players with few BBL games. Players with no recent BBL games get a flat value by type (see the player page).
         The round column (pick the round above) adds up Proj over the games the player is available for that round, so a double counts twice, ${fix(L.HOME_EDGE, 2)} up at home and down away; ×2 is the number of games. Green = double, red = bye. T20 elsewhere = SC points per game in T20Is and franchise T20 leagues over the last 12 months, scored with the same table (games in brackets; under 5 games sorts last). Squads as of ${esc(D.squads.as_of)}.</p>
+      ${D.sc ? `<p class="muted">vs price = Proj minus the average the SC price pays for. SC prices at about $${L.PRICE.perPoint.toLocaleString('en-AU')} a point of last season's average, so one big or injury-hit season sets the price, while Proj looks at two seasons. Green at +${L.PRICE.band} or more (underpriced), red at −${L.PRICE.band} or less (overpriced). Backtested on 992 BBL player-seasons from 2013/14: +5 to +10 beat their price the next season 64% of the time and +15 or more 79%; −5 or less only 16–26%. Shown only for players with recent BBL games and at least ${L.PRICE.minGames} SC games last season (SC blends a default into the price below that). Tested on start-of-season prices; once SC reprices in season, prices follow recent rounds.</p>` : ''}
       ${scNote()}
       <div class="scroll"><table id="ptable"></table></div>`;
     const latest = seasons[seasons.length - 1];
@@ -156,7 +164,7 @@
       const p = D.players[pid];
       const a = p && p.s[latest];
       const lastSeason = p ? Object.keys(p.s).sort().pop() : null;
-      return { pid, n: name(pid), sq: squadOf[pid], sc: sc(pid), last: a ? L.seasonLine(a) : null, a, proj: proj(pid),
+      return { pid, n: name(pid), sq: squadOf[pid], sc: sc(pid), last: a ? L.seasonLine(a) : null, a, proj: proj(pid), gap: L.priceGap(projOf(pid), sc(pid)),
                lastTeam: lastSeason && p.s[lastSeason].t, lastSeason, rounds: squadOf[pid] ? rounds16(pid) : null };
     });
     const roundCell = r => {
@@ -171,6 +179,7 @@
     const elseRank = r => (!r.ew ? -2 : r.ew.m < 5 ? -1 + r.ew.avg / 1e4 : r.ew.avg);
     const sorters = {
       proj: (a, b) => (b.proj ?? -1) - (a.proj ?? -1),
+      value: (a, b) => (b.gap ? b.gap.gap : -1e9) - (a.gap ? a.gap.gap : -1e9),
       round: (a, b) => (b.rexp ?? -1) - (a.rexp ?? -1),
       else: (a, b) => elseRank(b) - elseRank(a),
       name: (a, b) => a.n.localeCompare(b.n),
@@ -196,7 +205,7 @@
       const shown = list.slice(0, 200);
       const th = (key, label) => `<th${key === 'name' ? ' class="l"' : ''}><a href="#" data-sort="${key}">${label}${st.sort === key ? ' ▾' : ''}</a></th>`;
       document.getElementById('ptable').innerHTML = `
-        <thead><tr><th></th>${th('name', 'Player')}<th class="l">Team</th>${D.sc ? `<th class="l">Pos</th>${th('price', 'Price')}${th('own', 'Own %')}` : ''}${th('proj', 'Proj')}${th('round', `R${st.r}`)}${th('else', 'T20 elsewhere')}<th>M ${esc(latest)}</th><th>SC avg</th>${th('runs', 'Runs')}<th>SR</th>${th('wk', 'Wkts')}<th>Econ</th></tr></thead>
+        <thead><tr><th></th>${th('name', 'Player')}<th class="l">Team</th>${D.sc ? `<th class="l">Pos</th>${th('price', 'Price')}${th('own', 'Own %')}` : ''}${th('proj', 'Proj')}${D.sc ? th('value', 'vs price') : ''}${th('round', `R${st.r}`)}${th('else', 'T20 elsewhere')}<th>M ${esc(latest)}</th><th>SC avg</th>${th('runs', 'Runs')}<th>SR</th>${th('wk', 'Wkts')}<th>Econ</th></tr></thead>
         <tbody>${shown.map(r => `<tr>
           <td>${squadButton(r.pid)}</td>
           <td class="l name">${link(r.pid)} ${r.sq && r.sq.os ? `<span class="pill os">${esc(r.sq.os)}</span>` : ''}${r.sq && r.sq.new ? ' <span class="pill">new</span>' : ''}</td>
@@ -204,6 +213,7 @@
           ${D.sc ? `<td class="l">${r.sc ? esc(r.sc.pos.join('/')) : ''}${r.sc && r.sc.inj ? ` <span class="pill no">${esc(r.sc.inj)}</span>` : ''}</td>
           <td>${r.sc ? price(r.sc.price) : ''}</td><td>${r.sc && r.sc.own != null ? fix(r.sc.own) : ''}</td>` : ''}
           <td><b>${fix(r.proj)}</b></td>
+          ${D.sc ? `<td>${gapText(r.gap)}</td>` : ''}
           ${roundCell(r)}
           <td>${r.ew ? `${fix(r.ew.avg)} <span class="muted">(${r.ew.m})</span>` : ''}</td>
           <td>${r.a ? r.a.m : ''}</td><td>${r.last ? fix(r.last.avg) : ''}</td>
@@ -252,6 +262,7 @@
     const playerSeasons = p ? Object.keys(p.s).sort() : [];
     const latestPlayed = playerSeasons[playerSeasons.length - 1];
     const s = sc(pid);
+    const gap = L.priceGap(projOf(pid), s);
 
     $app.innerHTML = `
       <p><a href="#/players">← Players</a></p>
@@ -269,6 +280,7 @@
         ${s ? `<div class="stat"><span class="muted">SC price</span><b>${price(s.price)}</b></div>
         <div class="stat"><span class="muted">SC position</span><b>${esc(s.pos.join(' / '))}</b></div>
         <div class="stat"><span class="muted">Owned</span><b>${s.own != null ? fix(s.own) + '%' : '–'}</b></div>
+        ${gap ? `<div class="stat" id="pricegap"><span class="muted">Proj vs price</span><b>${gapText(gap)}</b><span class="muted">Priced for ${fix(gap.implied)} a game, Proj ${fix(proj(pid))}${gap.label ? `: ${GAP_LABEL[gap.label][1]}` : ''}</span></div>` : ''}
         ${s.prev ? `<div class="stat"><span class="muted">Official SC 2025-26</span><b>${fix(s.prev[1] / s.prev[0])}</b><span class="muted">${s.prev[1]} pts in ${s.prev[0]}</span></div>` : ''}` : ''}
       </div>
       ${s && s.inj ? `<div class="banner"><b>SuperCoach status:</b> ${esc(s.inj)}</div>` : ''}

@@ -4,7 +4,7 @@ if(location.hostname!=='www.supercoach.com.au')return alert('Open SuperCoach BBL
 const base='/2026/api/bbl/classic/v1/';
 let t=localStorage.getItem('VMLS:news:accessToken');try{const j=JSON.parse(t);t=typeof j=='string'?j:j&&(j.accessToken||j.access_token||j.token)}catch(e){}
 const seen=performance.getEntriesByType('resource').map(e=>e.name).filter(n=>new URL(n).origin===location.origin&&/\\/api\\/bbl\\/classic\\/v1\\/players-cf\\?/.test(n)&&n.includes('player_stats')).pop();
-const get=async u=>{const r=await fetch(u,{headers:t?{Authorization:'Bearer '+t}:{}});if(!r.ok)throw new Error(u.split('?')[0].split('/').pop()+' answered '+r.status+'. Reload the page and try again.');return r.json()};
+const get=async u=>{const r=await fetch(u,{headers:t?{Authorization:'Bearer '+t}:{}});const said=u.split('?')[0].split('/').pop()+' answered '+r.status;const body=await r.text();const retry=(t?'':localStorage.getItem('VMLS:news:accessToken')?' A SuperCoach login was found but could not be read.':' No SuperCoach login was found, so log in first.')+' Reload the page and try again.';if(!r.ok)throw new Error(said+'.'+retry);try{return JSON.parse(body)}catch(e){throw new Error(said+(body.trim()?' with something that is not JSON.':' with nothing in it.')+retry)}};
 const settings=await get(base+'settings?min=false');
 const fixture=await get(base+'real_fixture');
 const c=settings.competition||{};
