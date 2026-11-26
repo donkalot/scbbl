@@ -317,7 +317,10 @@
     if (!p) return;
     const recentSeasons = playerSeasons.slice(-2);
     async function renderLog(which) {
+      // A later route replaces #app, so a disconnected element means the user has moved on, maybe to another player.
+      const shown = document.getElementById('log');
       const log = L.playerLog(pid, await Promise.all(which.map(season)));
+      if (!shown.isConnected) return;
       const recent = log.slice(-5);
       document.getElementById('last5').textContent = recent.length ? fix(recent.reduce((t, g) => t + g.sc, 0) / recent.length) : '–';
       const last20 = log.slice(-20).map(g => g.sc);
@@ -351,9 +354,9 @@
   const GROUPS = { t20: 'T20', od: 'One-day', fc: 'First-class' };
 
   async function renderElsewhere(pid, sq) {
-    const e = await elsewhere();
     const el = document.getElementById('else');
-    if (!el) return;
+    const e = await elsewhere();
+    if (!el.isConnected) return;
     const x = e.players[pid];
     if (!x) {
       el.textContent = 'No games found in internationals, the Sheffield Shield, the One-Day Cup or the franchise T20 leagues.';
@@ -1311,7 +1314,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
 
   // ---------- router ----------
   async function route() {
-    view += 1;
+    const token = ++view;
     clearTimeout(timer);
     $app.onclick = null;
     const [path, query] = (location.hash || '#/').slice(1).split('?');
@@ -1330,6 +1333,7 @@ location.href=${JSON.stringify(site)}+'#/team?r='+((d.players[0]||{}).round||'')
       if (parts[0] === 'roles') return viewRoles(params);
       return viewPlayers(params);
     } catch (err) {
+      if (token !== view) return;
       $app.innerHTML = `<div class="card"><h2>Something went wrong</h2><p>${esc(err.message)}</p><a href="#/players">Back to players</a></div>`;
       console.error(err);
     }

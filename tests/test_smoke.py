@@ -122,6 +122,32 @@ def test_player_page_loads_match_log(server, page):
     assert page.evaluate('window.csp') == []
 
 
+@pytest.mark.parametrize('then, fails', [('player', False), ('list', False), ('list', True)], ids=['player', 'list', 'list-after-a-failed-fetch'])
+def test_a_slow_match_log_never_lands_on_the_next_page(server, page, then, fails):
+    pl = json.loads((ROOT / 'data' / 'players.json').read_text(encoding='utf-8'))
+    old = next(pid for pid, p in pl.items() if sorted(p['s']) == ['2011/12', '2012/13'])
+    held = []
+    page.route('**/data/matches/2011-12.json', lambda r: held.append(r))
+    page.route('**/data/matches/2012-13.json', lambda r: held.append(r))
+    page.goto(server + '#/player/' + old)
+    expect(page.locator('#log')).to_have_text('Loading matches…')
+    if then == 'player':
+        page.goto(server + '#/player/' + _squad_pid('SCO', 'Mitchell Marsh'))
+        expect(page.locator('#log tbody tr').first).to_be_visible()
+    else:
+        page.goto(server + '#/players')
+        expect(page.locator('#ptable tbody tr').first).to_be_visible()
+    mine = "() => [document.querySelector('#app h2').textContent, ...['log', 'last5', 'venues'].map(id => document.getElementById(id)?.innerHTML)]"
+    before = page.evaluate(mine)
+    for r in held:
+        r.fulfill(status=500, body='') if fails else r.continue_()
+    page.wait_for_timeout(300)
+    assert len(held) == 2 and page.evaluate(mine) == before
+    expect(page.locator('#app')).not_to_contain_text('Something went wrong')
+    assert all('status of 500' in e for e in page.errors) and (bool(page.errors) == fails)
+    page.errors.clear()
+
+
 def test_newcomer_page_shows_other_competitions(server, page):
     page.goto(server + '#/player/' + _squad_pid('REN', 'Jonny Bairstow'))
     expect(page.locator('#app h2').first).to_have_text('Jonny Bairstow')
