@@ -14,8 +14,7 @@ from .squads import _key
 
 URL = 'https://cricsheet.org/downloads/{}_male_json.zip'
 DIR = CACHE / 'elsewhere'
-# Between 6 and 7 days, so a cache restored on the first run of an ISO week is always refetched
-# and the rest of that week's daily runs reuse it.
+# Under 7 days, so the ~77 MB of zips are refetched about once a week, not every daily run.
 MAX_AGE_H = 156
 STATS = ('r', 'bf', 'f4', 's6', 'lb', 'rc', 'wk', 'ct', 'st', 'ro')
 FORM = 10
@@ -27,14 +26,25 @@ def comps():
     return json.loads((CURATED / 'competitions.json').read_text(encoding='utf-8'))['comps']
 
 
-def load(code, max_age_h=MAX_AGE_H):
+def load(code, max_age_h=MAX_AGE_H, stale_ok=True):
     # The code comes from a curated file and becomes a cache path, so keep it a plain name.
     if not re.fullmatch(r'[a-z0-9]+', code):
         raise ValueError(f'bad competition code {code!r}')
     path = DIR / f'{code}_male_json.zip'
-    if not path.exists() or time.time() - path.stat().st_mtime > max_age_h * 3600:
-        DIR.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(fetch(URL.format(code)))
+    age_h = (time.time() - path.stat().st_mtime) / 3600 if path.exists() else None
+    if age_h is None or age_h > max_age_h:
+        try:
+            data = fetch(URL.format(code))
+            if not zipfile.is_zipfile(io.BytesIO(data)):
+                raise OSError(f'got {len(data)} bytes that are not a zip')
+        except OSError as e:
+            # A stale copy is only a few days' form behind; the baseline guard catches one that has fallen short.
+            if age_h is None or not stale_ok:
+                raise
+            print(f'::warning::{code} download failed ({e}); using the cached zip from {age_h:.0f}h ago')
+        else:
+            DIR.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
     return zipfile.ZipFile(io.BytesIO(path.read_bytes()))
 
 
@@ -146,7 +156,18 @@ def build(sq, baseline, today=None):
     newcomers = [r for r in rows if r.get('new')]
     cc = comps()
     found, counts = collect(known, newcomers, since, cc)
-    problems = check(counts, found, known, baseline)
+    # A fresher local build can raise the baseline past CI's week-old cache, so only a fresh copy shows a real shrink.
+    base = baseline.get('comp_matches', {})
+    short = [c['code'] for c in cc if counts.get(c['code'], 0) < base.get(c['code'], 0)]
+    refused = []
+    for code in short:
+        try:
+            load(code, max_age_h=0, stale_ok=False)
+        except OSError as e:
+            refused.append(f'{code}: the cached copy is short and a fresh download failed ({e})')
+    if len(refused) < len(short):
+        found, counts = collect(known, newcomers, since, cc)
+    problems = refused + check(counts, found, known, baseline)
     unresolved = resolve(newcomers, found, known, active)
     players = {}
     for r in rows:

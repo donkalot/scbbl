@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import cricsheet
+from pipeline import cricsheet, register
 from pipeline.cricsheet import parse_match
 
 FX = Path(__file__).parent / 'fixtures'
@@ -185,3 +185,41 @@ def test_a_page_that_is_not_a_zip_is_treated_as_refused_and_never_overwrites_the
 def test_max_age_zero_refetches_even_a_fresh_cache(tmp_path, monkeypatch):
     _cache(tmp_path, monkeypatch, 0.1, lambda url: _zip_bytes('new'))
     assert cricsheet.load_zip(max_age_h=0).namelist() == ['new.json']
+
+
+def _names(tmp_path, monkeypatch, age_h, fetch):
+    monkeypatch.setattr(register, 'CACHE', tmp_path)
+    monkeypatch.setattr(register, 'fetch', fetch)
+    p = tmp_path / 'names.csv'
+    p.unlink(missing_ok=True)
+    if age_h is not None:
+        p.write_text('identifier,name\nold,Old Name\n', encoding='utf-8')
+        t = time.time() - age_h * 3600
+        os.utime(p, (t, t))
+    return p
+
+
+def test_a_refused_names_download_falls_back_to_the_cached_list(tmp_path, monkeypatch, capsys):
+    _names(tmp_path, monkeypatch, 30, _refused)
+    assert 'Old Name' in register._cached('names.csv', 'u')
+    assert '::warning::names.csv download failed' in capsys.readouterr().out
+    _names(tmp_path, monkeypatch, None, _refused)
+    with pytest.raises(urllib.error.HTTPError):
+        register._cached('names.csv', 'u')
+
+
+def test_a_names_page_that_is_not_the_list_never_overwrites_the_cache(tmp_path, monkeypatch, capsys):
+    p = _names(tmp_path, monkeypatch, 30, lambda url: b'<html>Just a moment...</html>')
+    assert 'Old Name' in register._cached('names.csv', 'u') and 'Old Name' in p.read_text()
+    assert 'not the names.csv list' in capsys.readouterr().out
+    _names(tmp_path, monkeypatch, None, lambda url: b'<html>Just a moment...</html>')
+    with pytest.raises(OSError, match='not the names.csv list'):
+        register._cached('names.csv', 'u')
+    assert not (tmp_path / 'names.csv').exists()
+
+
+def test_a_names_download_replaces_a_day_old_list_and_a_fresh_one_is_not_refetched(tmp_path, monkeypatch):
+    _names(tmp_path, monkeypatch, 30, lambda url: b'identifier,name\nnew,New Name\n')
+    assert 'New Name' in register._cached('names.csv', 'u')
+    monkeypatch.setattr(register, 'fetch', _not_called)
+    assert 'New Name' in register._cached('names.csv', 'u')

@@ -82,9 +82,9 @@ The build uses the newest players file. Every SC player must match a squad playe
 
 `.github/workflows/refresh-data.yml` runs daily from November to February and weekly the rest of the year. Each run:
 
-1. Downloads Cricsheet and the CA fixture. The other-competition zips are cached for the ISO week. Rain history is only fetched for a match whose venue or time has changed.
+1. Downloads Cricsheet and the CA fixture. The other-competition zips are refetched about weekly. If Cricsheet refuses a download, the run uses the last cached copy with a warning; the BBL zip only does this for up to 84 hours. Rain history is only fetched for a match whose venue or time has changed.
 2. Runs every guard before writing anything. The guards check that:
-   - no season, and no other competition, has fewer matches than `data/baseline.json`
+   - no season, and no other competition, has fewer matches than `data/baseline.json`. A competition whose cached copy is short is downloaded again first, because a local build may have raised the baseline from a newer copy.
    - at least 95% of squad players have a record outside the BBL
    - the player count hasn't dropped by more than 25%
    - the fixture has exactly 40 league games, 10 per team, inside the season window, with no team playing twice in a day

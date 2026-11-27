@@ -17,9 +17,20 @@ PACE = {'Pace', 'Medium', 'Fast Seam'}
 
 def _cached(name, url, max_age_h=24):
     path = CACHE / name
-    if not path.exists() or time.time() - path.stat().st_mtime > max_age_h * 3600:
-        CACHE.mkdir(exist_ok=True)
-        path.write_bytes(fetch(url))
+    age_h = (time.time() - path.stat().st_mtime) / 3600 if path.exists() else None
+    if age_h is None or age_h > max_age_h:
+        try:
+            data = fetch(url)
+            if not data.startswith(b'identifier,'):
+                raise OSError(f'got {len(data)} bytes that are not the {name} list')
+        except OSError as e:
+            # No age limit: a stale list only leaves the newest players on their short Cricsheet names.
+            if age_h is None:
+                raise
+            print(f'::warning::{name} download failed ({e}); using the cached copy from {age_h:.0f}h ago')
+        else:
+            CACHE.mkdir(exist_ok=True)
+            path.write_bytes(data)
     return path.read_text(encoding='utf-8')
 
 

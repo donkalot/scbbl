@@ -1,3 +1,9 @@
+import io
+import os
+import time
+import urllib.error
+import zipfile
+
 import pytest
 
 from pipeline import elsewhere
@@ -118,3 +124,89 @@ def test_load_refuses_a_code_that_is_not_a_plain_name(monkeypatch):
     for code in ('../../x', 'C:/x', 'ipl/../x', 'IPL'):
         with pytest.raises(ValueError):
             elsewhere.load(code)
+
+
+def _build(monkeypatch, cached, fresh, refuse=()):
+    """collect() counts the cached zips until load(max_age_h=0) has refreshed them."""
+    state = {'fresh': set(), 'collects': 0}
+    monkeypatch.setattr(elsewhere, 'comps', lambda: [{'code': 'ssh', 'g': 'fc'}, {'code': 'ipl', 'g': 't20'}])
+
+    def load(code, max_age_h=elsewhere.MAX_AGE_H, stale_ok=True):
+        assert max_age_h == 0 and not stale_ok
+        if code in refuse:
+            raise urllib.error.HTTPError('u', 403, 'Forbidden', {}, None)
+        state['fresh'].add(code)
+
+    def collect(known, newcomers, since, cc):
+        state['collects'] += 1
+        return {'a': {}}, {c['code']: (fresh if c['code'] in state['fresh'] else cached)[c['code']] for c in cc}
+
+    monkeypatch.setattr(elsewhere, 'load', load)
+    monkeypatch.setattr(elsewhere, 'collect', collect)
+    sq = {'teams': {'HEA': [{'pid': 'a'}]}}
+    _, counts, _, problems = elsewhere.build(sq, {'comp_matches': {'ssh': 222, 'ipl': 1243}})
+    return counts, problems, state
+
+
+def test_a_cache_older_than_the_baseline_is_refetched_before_it_counts_as_shrunk(monkeypatch):
+    counts, problems, state = _build(monkeypatch, {'ssh': 218, 'ipl': 1243}, {'ssh': 222, 'ipl': 1243})
+    assert problems == [] and counts == {'ssh': 222, 'ipl': 1243}
+    assert state['fresh'] == {'ssh'} and state['collects'] == 2
+
+
+def test_a_fresh_copy_that_is_still_short_fails(monkeypatch):
+    _, problems, _ = _build(monkeypatch, {'ssh': 218, 'ipl': 1243}, {'ssh': 220, 'ipl': 1243})
+    assert problems == ['ssh: 220 matches, baseline 222']
+
+
+def test_a_refused_refetch_of_a_short_cache_fails_and_says_why(monkeypatch):
+    _, problems, state = _build(monkeypatch, {'ssh': 218, 'ipl': 1243}, {}, refuse={'ssh'})
+    assert problems == ['ssh: the cached copy is short and a fresh download failed (HTTP Error 403: Forbidden)',
+                        'ssh: 218 matches, baseline 222']
+    assert state['collects'] == 1
+
+
+def test_one_refused_refetch_does_not_stop_another_from_counting(monkeypatch):
+    counts, problems, state = _build(monkeypatch, {'ssh': 218, 'ipl': 1200}, {'ssh': 222, 'ipl': 1243}, refuse={'ipl'})
+    assert counts == {'ssh': 222, 'ipl': 1200} and state['collects'] == 2
+    assert problems == ['ipl: the cached copy is short and a fresh download failed (HTTP Error 403: Forbidden)',
+                        'ipl: 1200 matches, baseline 1243']
+
+
+def test_a_cache_at_the_baseline_is_not_refetched(monkeypatch):
+    _, problems, state = _build(monkeypatch, {'ssh': 222, 'ipl': 1300}, {})
+    assert problems == [] and state['fresh'] == set() and state['collects'] == 1
+
+
+def _zip_cache(tmp_path, monkeypatch, fetch, age_h=200):
+    monkeypatch.setattr(elsewhere, 'DIR', tmp_path)
+    monkeypatch.setattr(elsewhere, 'fetch', fetch)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w') as z:
+        z.writestr('old.json', '{}')
+    p = tmp_path / 'ssh_male_json.zip'
+    p.write_bytes(buf.getvalue())
+    t = time.time() - age_h * 3600
+    os.utime(p, (t, t))
+
+
+def _refused(url):
+    raise urllib.error.HTTPError(url, 403, 'Forbidden', {}, None)
+
+
+def test_a_refused_weekly_refetch_uses_the_cached_zip_but_a_forced_one_raises(tmp_path, monkeypatch, capsys):
+    _zip_cache(tmp_path, monkeypatch, _refused)
+    assert elsewhere.load('ssh').namelist() == ['old.json']
+    assert '::warning::ssh download failed' in capsys.readouterr().out
+    with pytest.raises(urllib.error.HTTPError):
+        elsewhere.load('ssh', max_age_h=0, stale_ok=False)
+    (tmp_path / 'ssh_male_json.zip').unlink()
+    with pytest.raises(urllib.error.HTTPError):
+        elsewhere.load('ssh')
+
+
+def test_load_treats_a_page_that_is_not_a_zip_as_refused_and_keeps_the_cache(tmp_path, monkeypatch):
+    _zip_cache(tmp_path, monkeypatch, lambda url: b'<html>Just a moment...</html>')
+    with pytest.raises(OSError, match='not a zip'):
+        elsewhere.load('ssh', max_age_h=0, stale_ok=False)
+    assert elsewhere.load('ssh').namelist() == ['old.json']
