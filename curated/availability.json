@@ -25,15 +25,15 @@
     {"team": "HEA", "player": "Bevon Jacobs", "event": "jacobs-cover"},
     {"team": "REN", "player": "Mustafizur Rahman", "event": "mustafizur-ilt20"},
     {"team": "HUR", "player": "Rishad Hossain", "event": "rishad-first-8"},
-    {"team": "STR", "player": "Alex Carey", "event": "aus-nz-tests", "likely": true},
+    {"team": "STR", "player": "Alex Carey", "event": "aus-nz-tests"},
     {"team": "STR", "player": "Alex Carey", "event": "aus-ind-t1", "likely": true},
-    {"team": "SIX", "player": "Steve Smith", "event": "aus-nz-tests", "likely": true},
+    {"team": "SIX", "player": "Steve Smith", "event": "aus-nz-tests"},
     {"team": "SIX", "player": "Steve Smith", "event": "aus-ind-t1", "likely": true},
-    {"team": "HEA", "player": "Matt Renshaw", "event": "aus-nz-tests", "likely": true},
+    {"team": "SIX", "player": "Corey Rocchiccioli", "event": "aus-nz-tests"},
+    {"team": "SIX", "player": "Corey Rocchiccioli", "event": "aus-ind-t1", "likely": true},
+    {"team": "HEA", "player": "Matt Renshaw", "event": "aus-nz-tests"},
     {"team": "HEA", "player": "Matt Renshaw", "event": "aus-ind-t1", "likely": true},
-    {"team": "SCO", "player": "Cooper Connolly", "event": "aus-nz-tests", "likely": true},
-    {"team": "SCO", "player": "Cooper Connolly", "event": "aus-ind-t1", "likely": true},
-    {"team": "HUR", "player": "Beau Webster", "event": "aus-nz-tests", "likely": true},
-    {"team": "HUR", "player": "Beau Webster", "event": "aus-ind-t1", "likely": true}
+    {"team": "HEA", "player": "Michael Neser", "event": "aus-nz-tests"},
+    {"team": "HEA", "player": "Michael Neser", "event": "aus-ind-t1", "likely": true}
   ]
 }
