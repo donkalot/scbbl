@@ -561,6 +561,8 @@ def test_visit_counts_send_the_page_name_only(page):
             return route.fulfill(status=404, body='')
         route.fulfill(body=f.read_bytes(), content_type={'.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml'}.get(f.suffix, 'text/html'))
     page.route('https://bbl.fantasyplanner.au/**', site)
+    # Before the forecast window, so the planner doesn't fetch the forecast this test aborts.
+    page.clock.set_fixed_time('2026-11-05T00:00:00Z')
     held = []
     page.route('https://bbl.fantasyplanner.au/goatcounter.js', lambda r: held.append(r))
     page.route(re.compile(r'https://(api\.open-meteo\.com|apiv2\.cricket\.com\.au)/.*'), lambda r: r.abort())
